@@ -1,4 +1,4 @@
-# Ski-E-O Map Creator
+# Ski-E-O Map Creator v1.7.6.dem
 
 A standalone Windows app that turns any real-world mountain into a playable map for **Ski-E-O!**. Pick a square on
 the map, and it downloads the real elevation, builds a complete map (terrain, forests, snow, preview, starting
