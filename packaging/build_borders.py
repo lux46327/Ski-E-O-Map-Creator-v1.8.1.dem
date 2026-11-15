@@ -8,7 +8,7 @@ clipping never cuts a survey's own coast. Data (c) OpenStreetMap contributors, O
 Only the countries dem.py clips are kept. Each is split into 1 x 1 degree pieces, so dem.py loads only the pieces a
 terrain window touches. Coordinates are stored as integer micro-degrees (~0.1 m).
 
-    python tools/build_borders.py countries-maritime-1m.geo.json data/borders.npz
+    python packaging/build_borders.py countries-maritime-1m.geo.json data/borders.npz
 
 Needs shapely (only for building; the app itself does not).
 """
