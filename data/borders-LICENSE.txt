@@ -1,0 +1,10 @@
+data/borders.npz -- country outlines used to keep each national elevation survey inside its own country.
+
+Derived from geo-maps "countries-maritime-1m" v0.6.0 (https://github.com/simonepri/geo-maps), which is extracted from
+OpenStreetMap. Built with tools/build_borders.py (only the countries the app clips, split into 1-degree pieces).
+
+Map data (c) OpenStreetMap contributors, https://www.openstreetmap.org/copyright
+
+This file is made available under the Open Database License 1.0 (ODbL): https://opendatacommons.org/licenses/odbl/1.0/
+Any rights in individual contents of the database are licensed under the Database Contents License:
+https://opendatacommons.org/licenses/dbcl/1.0/
