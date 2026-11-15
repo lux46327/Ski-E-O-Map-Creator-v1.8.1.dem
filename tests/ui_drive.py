@@ -1,0 +1,460 @@
+"""Drive the real window through a scripted session and save a screenshot after every step (dev tool).
+
+usage: python tests/ui_drive.py <out dir> <scenario>
+  scenarios: search  -- search, pick, load terrain, fill in the resort, press Create (cancelled while it waits for the
+                         game to close if Ski-E-O runs), open My maps
+             3d      -- load terrain, open the 3D view, topo texture, height, close
+             3d-offline -- the same with the map tile servers unreachable, closing while it loads
+             numbox  -- type exact values into the slider value boxes, show the "Map installed" box
+             units    -- yearly snowfall next to the multiplier, the ft | m switch
+             treecap  -- the tree slider follows the map size (5M typed at 20 km, then 12 / 3 / 20 / 8 km, a moved square)
+             bigtrees -- 20 km map with the most trees the slider allows: create and install (Ski-E-O must be closed)
+             mods     -- Mod Library: install the pack named by env MOD (default 'buildings') with its real Install
+                         button (Ski-E-O must be closed)
+             osm      -- real trails and lifts: search env OSM_Q (default 'Beaver Creek'; OSM_KM size, OSM_AT "lat,lon"
+                         centre), load terrain, switch the OpenStreetMap option on, show the lines and the lift list,
+                         the satellite view (glades left out in grey) and with env OSM_LOOK "lat,lon,zoom" a close look;
+                         with env OSM_NAME also create and install the map (Ski-E-O must be closed)
+  Set LOCALAPPDATA to a scratch folder to keep the test away from a creator that is running for real.
+"""
+import ctypes
+import json
+import os
+import sys
+import time
+from ctypes import wintypes
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from PIL import Image  # noqa: E402
+
+from skieo_creator import APP_NAME, api, paths, server  # noqa: E402
+from skieo_creator.main import release_webview_profile, style_titlebar  # noqa: E402
+
+OUT = Path(sys.argv[1] if len(sys.argv) > 1 else 'ui_shots')
+SCEN = sys.argv[2] if len(sys.argv) > 2 else 'search'
+OUT.mkdir(parents=True, exist_ok=True)
+TITLE = APP_NAME + ' - UI test'          # not the real window's title, so shot() never grabs a running creator
+user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
+user32.SetProcessDPIAware()
+
+
+def shot(name):
+    hwnd = user32.FindWindowW(None, TITLE)
+    r = wintypes.RECT()
+    user32.GetClientRect(hwnd, ctypes.byref(r))
+    w, h = r.right, r.bottom
+    hdc = user32.GetDC(hwnd)
+    mdc = gdi32.CreateCompatibleDC(hdc)
+    bmp = gdi32.CreateCompatibleBitmap(hdc, w, h)
+    gdi32.SelectObject(mdc, bmp)
+    user32.PrintWindow(hwnd, mdc, 3)
+
+    class BMI(ctypes.Structure):
+        _fields_ = [('biSize', wintypes.DWORD), ('biWidth', ctypes.c_long), ('biHeight', ctypes.c_long),
+                    ('biPlanes', wintypes.WORD), ('biBitCount', wintypes.WORD), ('biCompression', wintypes.DWORD),
+                    ('biSizeImage', wintypes.DWORD), ('biXPelsPerMeter', ctypes.c_long), ('biYPelsPerMeter', ctypes.c_long),
+                    ('biClrUsed', wintypes.DWORD), ('biClrImportant', wintypes.DWORD)]
+    bi = BMI(ctypes.sizeof(BMI), w, -h, 1, 32, 0, 0, 0, 0, 0, 0)
+    buf = ctypes.create_string_buffer(w * h * 4)
+    gdi32.GetDIBits(mdc, bmp, 0, h, buf, ctypes.byref(bi), 0)
+    Image.frombuffer('RGBA', (w, h), buf, 'raw', 'BGRA', 0, 1).convert('RGB').save(OUT / (name + '.png'))
+    gdi32.DeleteObject(bmp)
+    gdi32.DeleteDC(mdc)
+    user32.ReleaseDC(hwnd, hdc)
+    print('shot', name, flush=True)
+
+
+def wait_js(win, expr, timeout=120, poll=0.4):
+    t = time.time()
+    while time.time() - t < timeout:
+        try:
+            if win.evaluate_js(expr):
+                return True
+        except Exception:
+            pass
+        time.sleep(poll)
+    print('TIMEOUT waiting for', expr, flush=True)
+    return False
+
+
+def js(win, code):
+    return win.evaluate_js(code)
+
+
+def drive(win):
+    wait_js(win, "document.getElementById('ver').textContent.length > 0", 60)
+    js(win, "window.__errs = []; window.addEventListener('error', function (e) { window.__errs.push(String(e.message)); });")
+    time.sleep(3)
+    shot('01_start')
+    if SCEN == 'search':
+        js(win, "document.getElementById('q').value = 'Mount Hood Meadows'; doSearch();")
+        wait_js(win, "document.querySelectorAll('.row[data-i]').length > 0", 30)
+        time.sleep(0.5)
+        shot('02_results')
+        js(win, "pickResult(0)")
+        time.sleep(4)
+        shot('03_picked')
+        js(win, "document.getElementById('loadBtn').click()")
+        time.sleep(1.5)
+        shot('04_loading')
+        wait_js(win, "!!S.preview", 180)
+        time.sleep(3)
+        shot('05_preview')
+        js(win, "document.getElementById('panel').querySelector('#tab-create').scrollTop = 400")
+        js(win, "document.getElementById('name').value = 'Hood UI Test'; S.touched.name = true; updateButtons();")
+        time.sleep(0.6)
+        shot('06_settings')
+        print('state', js(win, "JSON.stringify({biome: document.getElementById('biome').value, tl: document.getElementById('treeline').value, snow: document.getElementById('snow').value, create: !document.getElementById('createBtn').disabled, elev: document.getElementById('baseElev').textContent})"), flush=True)
+        js(win, "document.getElementById('createBtn').click()")
+        wait_js(win, "S.job && S.job.kind === 'create' && (S.job.state === 'waiting' || S.job.state === 'done' || S.job.state === 'error')", 300)
+        time.sleep(1)
+        js(win, "document.getElementById('panel').querySelector('#tab-create').scrollTop = 99999")
+        time.sleep(0.6)
+        shot('07_create')
+        print('job', js(win, "JSON.stringify(S.job)")[:400], flush=True)
+        if js(win, "S.job.state === 'waiting'"):
+            js(win, "document.getElementById('cancelBtn').click()")
+            wait_js(win, "S.job.state === 'cancelled'", 30)
+            time.sleep(1)
+            shot('08_cancelled')
+        js(win, "document.querySelector('[data-tab=maps]').click()")
+        time.sleep(1.5)
+        shot('09_maps')
+    if SCEN == 'features':                                     # satellite layer, treeline fade, mod library tab
+        js(win, "document.querySelector('[data-layer=sat]').click(); map.setView([45.87, 6.92], 13)")
+        time.sleep(6)
+        shot('60_satellite')
+        js(win, "document.getElementById('panel').querySelector('#tab-create').scrollTop = 600")
+        time.sleep(0.6)
+        shot('61_fade')
+        print('fade', js(win, "JSON.stringify({v: document.getElementById('fade').value, max: document.getElementById('fade').max, "
+                              "box: document.getElementById('fadeOut').value, size_max: document.getElementById('size').max})"), flush=True)
+        js(win, "document.getElementById('modsBtn').click()")
+        wait_js(win, "document.querySelectorAll('#modsList .mrow, #modsList .empty').length > 0", 20)
+        time.sleep(0.8)
+        shot('62_mods')
+        js(win, "document.getElementById('modsBack').click()")
+        time.sleep(0.8)
+        shot('63_back')
+        js(win, "document.querySelector('[data-layer=topo]').click()")
+        print('errors', js(win, "JSON.stringify(window.__errs || [])"), flush=True)
+    if SCEN == 'units':                                        # yearly snowfall next to the multiplier, ft | m switch
+        js(win, "document.getElementById('q').value = 'Jackson Hole Mountain Resort'; doSearch();")
+        wait_js(win, "document.querySelectorAll('.row[data-i]').length > 0", 30)
+        js(win, "pickResult(0)")
+        time.sleep(2)
+        js(win, "document.getElementById('loadBtn').click()")
+        wait_js(win, "!!S.preview", 300)
+        time.sleep(2)
+        vals = ("JSON.stringify([document.getElementById('biome').value, document.getElementById('snowOut').value + ' ' + "
+                "document.getElementById('snowUnit').textContent, document.getElementById('tlOut').value + ' ' + "
+                "document.getElementById('tlUnit').textContent, document.querySelector('#unitsTop .on').textContent])")
+        print('feet   ->', js(win, vals), flush=True)
+        js(win, "document.getElementById('unitsTop').click()")
+        time.sleep(0.5)
+        print('metres ->', js(win, vals), flush=True)
+        js(win, "var s = document.getElementById('snow'); s.value = 1.6; s.oninput();")
+        time.sleep(0.3)
+        print('1.60x  ->', js(win, vals), flush=True)
+        js(win, "var b = document.getElementById('biome'); b.value = 'Hokkaido'; b.onchange();")
+        time.sleep(0.3)
+        print('Hokkaido ->', js(win, vals), flush=True)
+        js(win, "document.getElementById('panel').querySelector('#tab-create').scrollTop = 250")
+        time.sleep(0.6)
+        shot('91_units')
+        js(win, "document.getElementById('unitsTop').click()")
+        time.sleep(0.4)
+        print('back to feet ->', js(win, vals), flush=True)
+        print('errors', js(win, "JSON.stringify(window.__errs || [])"), flush=True)
+    if SCEN == 'treecap':                                      # the tree limit follows the map size
+        def typ(box, text):
+            js(win, "var b = document.getElementById('%s'); b.focus(); b.value = %s;"
+                    "b.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter'}))" % (box, json.dumps(text)))
+            time.sleep(0.4)
+        trees = "JSON.stringify([S.sq.km, +document.getElementById('trees').max, +document.getElementById('trees').value, document.getElementById('treesOut').value])"
+        typ('sizeOut', '20')
+        typ('treesOut', '5,000,000')
+        print('20 km, 5M picked ->', js(win, trees), flush=True)
+        typ('sizeOut', '12')
+        print('12 km ->', js(win, trees), flush=True)
+        typ('sizeOut', '3')
+        print('3 km ->', js(win, trees), flush=True)
+        typ('sizeOut', '20')
+        print('20 km again ->', js(win, trees), flush=True)
+        js(win, "var s = document.getElementById('size'); s.value = 8; s.oninput(); s.onchange();")
+        time.sleep(0.5)
+        print('slider dragged to 8 km ->', js(win, trees), flush=True)
+        typ('treesOut', '1,000,000')
+        js(win, "moveSquare(S.sq.lat + 0.02, S.sq.lon + 0.02)")
+        time.sleep(0.5)
+        print('lowered to 1M, square moved ->', js(win, trees), flush=True)
+        js(win, "document.getElementById('panel').querySelector('#tab-create').scrollTop = 99999")
+        time.sleep(0.6)
+        shot('81_treecap')
+        print('errors', js(win, "JSON.stringify(window.__errs || [])"), flush=True)
+    if SCEN == 'bigtrees':                                     # 20 km map with the most trees, created and installed
+        def typ(box, text):
+            js(win, "var b = document.getElementById('%s'); b.focus(); b.value = %s;"
+                    "b.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter'}))" % (box, json.dumps(text)))
+            time.sleep(0.4)
+        js(win, "document.getElementById('q').value = 'Jackson Hole Mountain Resort'; doSearch();")
+        wait_js(win, "document.querySelectorAll('.row[data-i]').length > 0", 30)
+        js(win, "pickResult(0)")
+        time.sleep(2)
+        typ('sizeOut', os.environ.get('BT_KM', '20'))
+        js(win, "document.getElementById('loadBtn').click()")
+        wait_js(win, "!!S.preview", 300)
+        time.sleep(2)
+        js(win, "var n = document.getElementById('name'); n.value = %s; n.dispatchEvent(new Event('input'));"   # as typed
+                % json.dumps(os.environ.get('BT_NAME', 'UI Trees Max')))
+        typ('treesOut', os.environ.get('BT_TREES') or js(win, "document.getElementById('trees').max"))
+        if os.environ.get('BT_TL'):                            # treeline below the whole map: no trees at all
+            typ('tlOut', os.environ['BT_TL'])
+        if not wait_js(win, "!document.getElementById('createBtn').disabled", 900):   # a fresh profile unpacks game files first
+            print('create disabled:', js(win, "JSON.stringify({busy: !!busy(), job: S.job, preview: !!S.preview, game: S.game, "
+                                              "name: document.getElementById('name').value, nameBad: S.nameBad})"), flush=True)
+        js(win, "document.getElementById('panel').querySelector('#tab-create').scrollTop = 99999")
+        time.sleep(0.6)
+        shot('71_settings')
+        print('settings', js(win, "JSON.stringify({km: S.sq.km, trees: +document.getElementById('trees').value, "
+                                  "trees_max: +document.getElementById('trees').max, slope: +document.getElementById('slope').value, "
+                                  "treeline: +document.getElementById('treeline').value, "
+                                  "create: !document.getElementById('createBtn').disabled})"), flush=True)
+        js(win, "document.getElementById('createBtn').click()")
+        wait_js(win, "S.job && S.job.kind === 'create' && ['done', 'error', 'waiting'].includes(S.job.state)", 1200)
+        time.sleep(1.5)
+        shot('72_created')
+        print('job', js(win, "JSON.stringify(S.job)")[:600], flush=True)
+        print('errors', js(win, "JSON.stringify(window.__errs || [])"), flush=True)
+    if SCEN == '3d':
+        js(win, "document.getElementById('q').value = 'Killington Peak'; doSearch();")
+        wait_js(win, "document.querySelectorAll('.row[data-i]').length > 0", 30)
+        js(win, "pickResult(0)")
+        time.sleep(2)
+        js(win, "document.getElementById('loadBtn').click()")
+        wait_js(win, "!!S.preview", 240)
+        time.sleep(2)
+        shot('31_preview')
+        js(win, "document.getElementById('photo').click()")
+        wait_js(win, "document.getElementById('v3dLoading').classList.contains('hidden') && !document.getElementById('v3d').classList.contains('hidden')", 120)
+        time.sleep(3)
+        shot('32_3d')
+        js(win, "document.querySelector('[data-tex=topo]').click()")
+        wait_js(win, "document.querySelector('[data-tex=topo]').classList.contains('on')", 120)
+        time.sleep(3)
+        shot('33_topo')
+        js(win, "var e = document.getElementById('v3dExag'); e.value = 2.5; e.oninput();")
+        time.sleep(2)
+        shot('34_exag')
+        print('errors', js(win, "JSON.stringify(window.__errs || [])"), flush=True)
+        js(win, "document.getElementById('v3dClose').click()")
+        time.sleep(1)
+        shot('35_closed')
+    if SCEN == '3d-offline':
+        # map tile servers unreachable (see main): the 3D view must still open, and Close / Esc must work while loading
+        js(win, "document.getElementById('q').value = 'Killington Peak'; doSearch();")
+        wait_js(win, "document.querySelectorAll('.row[data-i]').length > 0", 30)
+        js(win, "pickResult(0)")
+        time.sleep(2)
+        js(win, "document.getElementById('loadBtn').click()")
+        wait_js(win, "!!S.preview", 240)
+        for z in (13, 14, 15, 14):                                      # plenty of tile requests in flight
+            js(win, "map.setZoom(%d)" % z)
+            time.sleep(0.3)
+        js(win, "document.getElementById('photo').click()")
+        time.sleep(0.3)
+        shot('41_loading')
+        js(win, "document.getElementById('v3dClose').click()")
+        time.sleep(0.5)
+        print('closed while loading', js(win, "document.getElementById('v3d').classList.contains('hidden')"), flush=True)
+        js(win, "document.getElementById('photo').click()")
+        time.sleep(0.3)
+        js(win, "window.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}))")
+        time.sleep(0.5)
+        print('esc while loading', js(win, "document.getElementById('v3d').classList.contains('hidden')"), flush=True)
+        t = time.time()
+        js(win, "document.getElementById('photo').click()")
+        ok = wait_js(win, "document.getElementById('v3dLoading').classList.contains('hidden') && !document.getElementById('v3d').classList.contains('hidden')", 60, 0.1)
+        print('opened offline', ok, round(time.time() - t, 1), 's', flush=True)
+        time.sleep(2)
+        shot('42_3d')
+        js(win, "document.querySelector('[data-tex=topo]').click()")
+        wait_js(win, "document.getElementById('v3dLoading').classList.contains('note')", 60)
+        print('topo note', js(win, "document.getElementById('v3dLoadingText').textContent"), flush=True)
+        shot('43_topo_offline')
+        print('errors', js(win, "JSON.stringify(window.__errs || [])"), flush=True)
+        js(win, "window.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}))")
+        time.sleep(0.5)
+        print('esc closed', js(win, "document.getElementById('v3d').classList.contains('hidden')"), flush=True)
+    if SCEN == 'numbox':
+        js(win, "document.getElementById('q').value = 'Killington Peak'; doSearch();")
+        wait_js(win, "document.querySelectorAll('.row[data-i]').length > 0", 30)
+        js(win, "pickResult(0)")
+        time.sleep(2)
+        js(win, "document.getElementById('loadBtn').click()")
+        wait_js(win, "!!S.preview", 240)
+        time.sleep(1.5)
+        js(win, "document.getElementById('panel').querySelector('#tab-create').scrollTop = 99999")
+        time.sleep(0.6)
+        shot('51_boxes')
+
+        def typ(box, text, key='Enter'):
+            js(win, "var b = document.getElementById('%s'); b.focus(); b.value = %s;" % (box, json.dumps(text)))
+            if key == 'Enter':
+                js(win, "document.getElementById('%s').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter'}))" % box)
+            else:
+                js(win, "document.getElementById('%s').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}))" % box)
+            time.sleep(0.4)
+            return js(win, "JSON.stringify({box: document.getElementById('%s').value, unit: document.getElementById('%s').nextElementSibling.textContent, "
+                           "treeline: +document.getElementById('treeline').value, snow: +document.getElementById('snow').value, "
+                           "valley: +document.getElementById('valley').value, km: S.sq.km})" % (box, box))
+        print('treeline 11,300 ft ->', typ('tlOut', '11,300'), flush=True)
+        print('treeline 99999 (clamped) ->', typ('tlOut', '99999'), flush=True)
+        print('treeline none ->', typ('tlOut', 'none'), flush=True)
+        print('treeline 8000 ft ->', typ('tlOut', '8000 ft'), flush=True)
+        print('treeline abc (ignored) ->', typ('tlOut', 'abc'), flush=True)
+        print('treeline 5000 + Esc (undo) ->', typ('tlOut', '5000', 'Escape'), flush=True)
+        print('snow 0.93 ->', typ('snowOut', '0.93'), flush=True)
+        print('snow 9 (clamped) ->', typ('snowOut', '9'), flush=True)
+        print('snow 0,8 (decimal comma) ->', typ('snowOut', '0,8'), flush=True)
+        print('treeline 3.500 (European thousands) ->', typ('tlOut', '3.500'), flush=True)
+        js(win, "var n = document.getElementById('name'); n.focus(); n.value = 'Zürs am Arlberg!'; n.setSelectionRange(16, 16); n.dispatchEvent(new Event('input'));")
+        time.sleep(0.6)
+        print('name typed "Zürs am Arlberg!" ->', js(win, "JSON.stringify([document.getElementById('name').value, !document.getElementById('nameHint').classList.contains('hidden')])"), flush=True)
+        print('server rule for a name that skips the box:', js(win, "JSON.stringify(null)"), flush=True)
+        r = win.evaluate_js("window.pywebview.api.name_ok('Résort!')")
+        print('   name_ok("Résort!") ->', r, flush=True)
+        js(win, "var n = document.getElementById('name'); n.value = 'Killington Peak'; n.dispatchEvent(new Event('input'));")
+        time.sleep(0.4)
+        print('slope default ->', js(win, "document.getElementById('slope').value + ' / ' + document.getElementById('slopeOut').value + document.getElementById('slopeUnit').textContent"), flush=True)
+        for t in ('40', '70', '10', '33'):
+            typ('slopeOut', t)
+            print('slope %s ->' % t, js(win, "document.getElementById('slope').value + ' / ' + document.getElementById('slopeOut').value"), flush=True)
+        print('trees 123,456 ->', typ('treesOut', '123,456'), js(win, "document.getElementById('trees').value"), flush=True)
+        print('trees 5 (clamped) ->', typ('treesOut', '5'), js(win, "document.getElementById('trees').value"), flush=True)
+        print('trees 250000 ->', typ('treesOut', '250000'), js(win, "document.getElementById('trees').value"), flush=True)
+        js(win, "document.querySelector('#cardSettings details').open = true")
+        print('valley 1,500 ->', typ('valOut', '1,500'), flush=True)
+        print('valley off ->', typ('valOut', 'off'), flush=True)
+        js(win, "document.getElementById('panel').querySelector('#tab-create').scrollTop = 0")
+        print('size 7.3 ->', typ('sizeOut', '7.3'), flush=True)
+        print('size 50 (clamped) ->', typ('sizeOut', '50'), flush=True)
+        time.sleep(1)
+        shot('52_typed')
+        js(win, "document.getElementById('unitsBtn').click()")
+        time.sleep(0.5)
+        print('metres: treeline', typ('tlOut', '2500'), flush=True)
+        js(win, "document.getElementById('unitsBtn').click()")
+        js(win, "var b = document.getElementById('tlOut'); b.focus();")
+        time.sleep(0.4)
+        js(win, "document.getElementById('panel').querySelector('#tab-create').scrollTop = 400")
+        time.sleep(0.4)
+        shot('53_focused')
+        js(win, "document.getElementById('tlOut').blur()")
+        js(win, "showDone({name: 'Killington Peak', slug: 'x', biome_label: 'Northeast', thumb: document.getElementById('diorama').src, stats: {trees: 512345}})")
+        time.sleep(1.5)
+        shot('54_done')
+        js(win, "document.querySelector('[data-tab=maps]').click()")
+        time.sleep(1.5)
+        shot('55_maps')
+        print('errors', js(win, "JSON.stringify(window.__errs || [])"), flush=True)
+    if SCEN == 'osm':                                          # real trails and lifts from OpenStreetMap
+        js(win, "document.getElementById('q').value = %s; doSearch();" % json.dumps(os.environ.get('OSM_Q', 'Beaver Creek')))
+        wait_js(win, "document.querySelectorAll('.row[data-i]').length > 0", 30)
+        js(win, "pickResult(0)")
+        time.sleep(2)
+        if os.environ.get('OSM_KM'):
+            js(win, "var b = document.getElementById('sizeOut'); b.focus(); b.value = %s;"
+                    "b.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter'}))" % json.dumps(os.environ['OSM_KM']))
+        if os.environ.get('OSM_AT'):                               # "lat,lon": the square's centre
+            js(win, "moveSquare(%s); fitSquare(); 0" % os.environ["OSM_AT"])
+        time.sleep(1)
+        js(win, "document.getElementById('loadBtn').click()")
+        wait_js(win, "!!S.preview", 300)
+        js(win, "(function (i) { i.checked = true; i.dispatchEvent(new Event('change')); })(document.getElementById('osm'))")
+        time.sleep(1.5)
+        shot('a1_loading')
+        wait_js(win, "!!S.osm || !(S.job && S.job.state === 'running')", 400)
+        time.sleep(2.5)
+        js(win, "document.getElementById('osmInfo').scrollIntoView({block: 'center'}); 0")
+        time.sleep(0.8)
+        shot('a2_osm')
+        print('osm', (js(win, "JSON.stringify(S.osm && S.osm.summary)") or '')[:4000], flush=True)
+        js(win, "document.querySelector('#osmInfo details') && (document.querySelector('#osmInfo details').open = true)")
+        time.sleep(0.5)
+        shot('a3_list')
+        js(win, "map.setZoom(map.getZoom() + 1.5); 0")
+        time.sleep(3)
+        shot('a4_zoom')
+        js(win, "document.querySelector('.hud-btn[data-layer=sat]').click(); 0")      # glades: grey on the satellite view
+        time.sleep(4)
+        shot('a4b_satellite')
+        if os.environ.get('OSM_LOOK'):                             # "lat,lon,zoom": a close look
+            la, lo, z = os.environ['OSM_LOOK'].split(',')
+            js(win, "map.setView([%s, %s], %s); 0" % (float(la), float(lo), float(z)))
+            time.sleep(5)
+            shot('a4c_look')
+        if os.environ.get('OSM_NAME'):                             # create and install it (Ski-E-O must be closed)
+            js(win, "var n = document.getElementById('name'); n.value = %s; n.dispatchEvent(new Event('input'));"
+                    % json.dumps(os.environ['OSM_NAME']))
+            if not wait_js(win, "!document.getElementById('createBtn').disabled", 900):
+                print('create disabled:', js(win, "JSON.stringify({job: S.job, osm: !!S.osm, nameBad: S.nameBad})"), flush=True)
+            js(win, "document.getElementById('createBtn').click()")
+            wait_js(win, "S.job && S.job.kind === 'create' && ['done', 'error', 'waiting'].includes(S.job.state)", 1800)
+            time.sleep(1.5)
+            js(win, "document.getElementById('panel').querySelector('#tab-create').scrollTop = 99999")
+            time.sleep(0.6)
+            shot('a5_created')
+            print('job', (js(win, "JSON.stringify(S.job)") or '')[:800], flush=True)
+        print('errors', js(win, "JSON.stringify(window.__errs || [])"), flush=True)
+    if SCEN == 'mods':
+        row = "document.querySelector('#modsList .mrow[data-mod=%s]')" % json.dumps(os.environ.get('MOD', 'buildings'))
+        inst, uninst = row + ".querySelector('[data-on=\"1\"]')", row + ".querySelector('[data-on=\"0\"]')"
+        js(win, "document.getElementById('modsBtn').click()")
+        wait_js(win, "document.querySelectorAll('#modsList .mrow, #modsList .empty').length > 0", 60)
+        time.sleep(0.8)
+        shot('70_mods')
+        if not js(win, inst + '.disabled'):                  # not installed yet: Install
+            js(win, inst + '.click()')
+            wait_js(win, "(function (i, u) { return i && i.disabled && !u.disabled; })(%s, %s)" % (inst, uninst), 300)
+            time.sleep(0.8)
+            shot('71_mods_on')
+        print('mods', js(win, "JSON.stringify([].map.call(document.querySelectorAll('#modsList .mrow'), function (r) { "
+                              "return [r.dataset.mod, !r.querySelector('[data-on=\"0\"]').disabled, r.querySelector('.badge').textContent]; }))"),
+              flush=True)
+        print('errors', js(win, "JSON.stringify(window.__errs || [])"), flush=True)
+    time.sleep(0.5)
+    win.destroy()
+
+
+def real_creator_open():
+    """a real creator is running (it holds main.single_instance's mutex) on the same app data, so the same browser
+    profile: release_webview_profile() would stop its WebView2 processes and leave its window blank"""
+    h = ctypes.windll.kernel32.OpenMutexW(0x00100000, False, 'Local\\SkiEOMapCreator')     # SYNCHRONIZE
+    if not h:
+        return False
+    ctypes.windll.kernel32.CloseHandle(h)
+    return paths.APP_DIR == Path.home() / 'AppData' / 'Local' / paths.APP_DIR.name
+
+
+def main():
+    import webview
+    if real_creator_open():
+        sys.exit('A Map Creator is open on this PC: close it first, or set LOCALAPPDATA to a scratch folder.')
+    paths.setup_logging()
+    release_webview_profile(paths.WEBVIEW)
+    if SCEN == '3d-offline':
+        for spec in server.LAYERS.values():
+            spec['url'] = 'https://tiles.unreachable.invalid/{z}/{x}/{y}.png'
+    url, _ = server.start()
+    bridge = api.Api()
+    win = webview.create_window(TITLE, url, js_api=bridge, width=1440, height=900, min_size=(1100, 680),
+                                background_color='#0b1118')
+    bridge._attach(win)
+    win.events.shown += style_titlebar
+    webview.start(drive, (win,), gui='edgechromium', private_mode=False, storage_path=str(paths.WEBVIEW))
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,69 @@
+Ski-E-O Map Creator -- third-party software and data
+=====================================================
+
+This is a fan-made tool. It is not affiliated with or endorsed by the developers of Ski-E-O!.
+No game files are included: the creator reads the files it needs from your own installed copy of the game.
+
+Software
+--------
+* Leaflet 1.9.4 (BSD 2-Clause) -- https://leafletjs.com -- web/vendor/leaflet/LICENSE
+* three.js r160 with OrbitControls (MIT) -- https://threejs.org -- web/vendor/three/LICENSE
+* retoc (MIT) -- https://github.com/trumank/retoc -- tools/retoc-LICENSE
+* UE4SS v3.0.1 experimental (MIT) -- https://github.com/UE4SS-RE/RE-UE4SS -- data/ue4ss/ue4ss/LICENSE
+  Installed into the game only when a Mod Library mod is switched on and the game has no UE4SS yet.
+  retoc downloads the Oodle compression library on first use.
+* PyInstaller (GPL 2.0 with the bootloader exception: the packaged .exe may be distributed under any license), pywebview (BSD 3-Clause), pythonnet (MIT), NumPy (BSD 3-Clause), Pillow (MIT-CMU), tifffile (BSD 3-Clause), Python (PSF)
+* rasterio (BSD 3-Clause) with GDAL (MIT) and PROJ (MIT), pystac-client and PySTAC (Apache 2.0), requests (Apache 2.0),
+  truststore (MIT)
+* Microsoft Edge WebView2 Runtime (installed on Windows; not included)
+
+Fonts (SIL Open Font License 1.1, see web/fonts/*-OFL.txt)
+-----------------------------------------------------------
+* Caprasimo -- The Caprasimo Project Authors
+* Lexend -- The Lexend Project Authors
+* Roboto Condensed -- The Roboto Project Authors
+
+Map and elevation data (downloaded while you use the app)
+---------------------------------------------------------
+* Map data (c) OpenStreetMap contributors, ODbL -- https://www.openstreetmap.org/copyright
+* Map style (c) OpenTopoMap, CC-BY-SA -- https://opentopomap.org
+* Satellite imagery: Esri World Imagery (Esri, Maxar, Earthstar Geographics, and the GIS User Community)
+* Trails, lifts and country borders at the survey edges: OpenStreetMap contributors, ODbL, through public Overpass API servers
+  (overpass-api.de, ovp.dresel.systems, overpass.private.coffee, maps.mail.ru)
+* Place search: Photon by komoot (OpenStreetMap data) and Nominatim (OpenStreetMap Foundation)
+* Elevation, national surveys:
+  - Switzerland and Liechtenstein: swissALTI3D and swissALTIRegio (c) swisstopo (free geodata, OGD)
+  - France: LiDAR HD terrain model and RGE ALTI (c) IGN, Licence Ouverte / Etalab 2.0
+  - Italy: TINITALY/01 (c) INGV, Tarquini et al., CC BY 4.0; South Tyrol DTM (c) Provincia autonoma di Bolzano, CC0
+  - Norway: national terrain model (c) Kartverket, CC BY 4.0
+  - Finland: elevation model 2 m / 10 m (c) National Land Survey of Finland, CC BY 4.0 (needs your own API key)
+  - Sweden: Markhoejdmodell (c) Lantmaeteriet, CC0 (needs your own Geotorget consumer key and secret)
+  - Spain: MDT05 (c) Instituto Geografico Nacional (CNIG), CC BY 4.0
+  - Japan: elevation tiles (c) Geospatial Information Authority of Japan (GSI Tiles), GSI content terms of use
+  - USA: USGS Seamless 1-meter DEM (S1M) and 3D Elevation Program (3DEP), public domain
+  - Austria: ALS terrain model 1 m (c) BEV, CC BY 4.0
+  - Germany: DGM1 of Bavaria (c) Bayerische Vermessungsverwaltung, CC BY 4.0
+  - Poland: NMT 1 m (c) GUGiK (Glowny Urzad Geodezji i Kartografii), open data
+  - Slovakia: DMR 5.0 (c) UGKK SR (Geodesy, Cartography and Cadastre Authority), CC BY 4.0
+  - Czechia: DMR 5G (c) CUZK, CC BY 4.0
+  - England: LIDAR Composite DTM 1 m (c) Environment Agency, Open Government Licence v3
+  - Scotland: public-sector LiDAR DTM (c) Scottish Government and partners, Open Government Licence v3
+  - Iceland: IslandsDEM 10 m (c) Natturufraedistofnun Islands (Icelandic Institute of Natural History), CC BY 4.0
+  - New Zealand: 8 m DEM and 1 m lidar DEM (c) Toitu Te Whenua Land Information New Zealand, CC BY 4.0
+  - Australia: 5 m lidar DEM (c) Geoscience Australia, CC BY 4.0
+  - Canada: HRDEM (c) Natural Resources Canada, Open Government Licence - Canada; ArcticDEM (c) Polar Geospatial Center
+* Elevation elsewhere and to fill gaps: Terrain Tiles on AWS Open Data (Mapzen; sources include SRTM, GMTED2010, ETOPO1,
+  3DEP and others)
+* Tree canopy heights (to leave out glades): Meta and World Resources Institute (WRI), Global Canopy Height Map v2,
+  CC BY 4.0, on AWS Open Data -- https://registry.opendata.aws/dataforgood-fb-forests/
+
+Mod Library (data/mods, data/lifts)
+-----------------------------------
+* Oof's Simple Cheat Menu, Oof's Anarchy, Oof's Speed Control, Oof's Alpine Buildings: MIT, with this project (LICENSE)
+* Doppelmayr D-Line R2 Six and Gondola lift packs: the mod author's work. Doppelmayr and D-Line are trademarks of their
+  owners; they are shown only to name the lifts, with no connection to the company.
+
+Data included with the app
+--------------------------
+* data/borders.npz: country outlines (c) OpenStreetMap contributors, ODbL 1.0, via geo-maps countries-maritime-1m
+  v0.6.0 (https://github.com/simonepri/geo-maps) -- data/borders-LICENSE.txt
