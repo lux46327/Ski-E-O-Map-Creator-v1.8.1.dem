@@ -37,7 +37,33 @@ Everything below is added on top of the original 1.7.6:
   (`packaging/THIRD-PARTY.txt` updated).
 - **No update check.** The "Check for updates" button is gone and this build never looks for updates.
 
-Details per change: [CHANGELOG.md](CHANGELOG.md).
+## Elevation data by country
+
+In these countries the terrain comes from the national elevation survey. Where a country has several, the finest
+one that covers the spot is used. Everywhere else, and in any gaps, it comes from Terrain Tiles on AWS (~30 m).
+Licences and credits are in [`packaging/THIRD-PARTY.txt`](packaging/THIRD-PARTY.txt).
+
+| Country | Datasets | Provider |
+|---|---|---|
+| Australia | 5 m lidar DEM | Geoscience Australia |
+| Austria | ALS terrain model 1 m | BEV |
+| Canada | HRDEM 2 m; ArcticDEM-based HRDEM 2 m (north of ~60° N) | Natural Resources Canada |
+| Czechia | DMR 5G 2 m | ČÚZK |
+| Finland | Elevation model 2 m (needs your own API key) | National Land Survey of Finland |
+| France | LiDAR HD 0.5 m; RGE ALTI 5 m | IGN |
+| Germany (Bavaria only) | DGM1 1 m | Bayerische Vermessungsverwaltung |
+| Iceland | IslandsDEM 10 m | Icelandic Institute of Natural History |
+| Italy | South Tyrol DTM 2.5 m (South Tyrol only); TINITALY 10 m | Provincia autonoma di Bolzano; INGV |
+| Japan | GSI elevation tiles 1 m / 5 m / 10 m | Geospatial Information Authority of Japan |
+| New Zealand | 1 m lidar DEM; 8 m DEM | Toitū Te Whenua LINZ |
+| Norway | National terrain model 1 m | Kartverket |
+| Poland | NMT 1 m | GUGiK |
+| Slovakia | DMR 5.0 1 m | ÚGKK SR |
+| Spain | MDT05 5 m | IGN / CNIG |
+| Sweden | Markhöjdmodell 1 m (needs your own Geotorget key and secret) | Lantmäteriet |
+| Switzerland and Liechtenstein | swissALTI3D 2 m; swissALTIRegio 10 m (also ~100 km beyond the border) | swisstopo |
+| United Kingdom (England, Scotland) | England: LIDAR Composite DTM 1 m; Scotland: public-sector LiDAR DTM 1 m | Environment Agency; Scottish Government |
+| United States (incl. Puerto Rico, US Virgin Islands) | USGS Seamless 1 m (contiguous US); 3DEP 3 m / 10 m | USGS |
 
 ## Download
 
