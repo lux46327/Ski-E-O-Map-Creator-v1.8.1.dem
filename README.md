@@ -17,21 +17,6 @@ Fan-made; not affiliated with or endorsed by the developers of Ski-E-O!.
 
 <div align="left">
 
-## What it does
-
-- **Any mountain on Earth.** Search a ski area, mountain or town, drag the square over it (3 to 20 km wide) and load
-  the real elevation: USGS 10 m data in the US, about 30 m everywhere else.
-- **Real trails and lifts.** Switch on **Real trails and lifts** and the ski area's runs and lifts from
-  OpenStreetMap are built into the map, ready when you start a New Game, each run as wide as its real cut through
-  the forest. Near the runs the forest follows the real tree cover, so open bowls stay open and glades stay wooded.
-- **A forest that fits.** The tree species of the game's own maps of the region, mixed and grouped in stands the way
-  they are there, with conifers near the summits, up to the treeline, and a tree limit for slower PCs.
-- **Snow like the game's own maps.** Piles, banks and drifts build up through the winter.
-- **3D preview.** Look the terrain over in 3D before you build it.
-- **Installs itself.** The map shows up on the game's world map in its real region, with its real elevations and
-  climate. **My Maps** reinstalls, removes or rebuilds your maps with the latest fixes.
-- **Mod Library.** One-click extras for the game, [below](#mod-library).
-
 ## What is different in this version (1.8.1.dem)
 
 ### Recently changed
