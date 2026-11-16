@@ -73,20 +73,23 @@ Fan-made; not affiliated with or endorsed by the developers of Ski-E-O!.
 
 <p align="center"><sub>Vail from the west: the Back Bowls and Blue Sky Basin</sub></p>
 
-## v1.8.1.dem
-Based on the original 1.8.1.
-### Recently changed
-- **3D view: overlays.** Four overlays (Buildability, Slope difficulty, Trails & lifts, Trees) can be switched on in any combination, on top of each other and of the Terrain or
-  Topo map surface:
-- **Leave out real lifts and trails on the map.** Click a lift or a trail on the 2D map to leave it out of the build (it is
-  shown at 10% opacity) and click again to take it back. What is left out is removed from the 3D view's Trails & lifts overlay
-  and from the map that is built. **Tick all / Untick all** buttons above each list do all lifts or all trails at once. It is saved with the map, so Show restores it.
-- **Show** on a saved map in My Maps loads everything the map was built with: position, size, rotation, name, biome,
-  treeline, snow, valley, slope, treeline fade, tree count, height modifier and offset, and real trails and lifts and
-  real tree cover when the map used them. It uses the cached elevation and tree cover, and the trails and lifts saved
-  with the map, instead of downloading them again.
+## What is different in this version (1.8.1.dem)
 
-### What's new
+### Recently changed
+
+- **Lock area.** Once the terrain is loaded, switch on "Lock area" to pin the square so it can not be moved, resized or turned by accident.
+- **3D view overlays.** In the 3D view, switch on any of **Buildability** (the game's own overlay: red where the ground is steeper than 22°, buildable ground left unpainted), **Slope difficulty** (the game's own Beginner / Intermediate / Expert /
+  Extreme tiers, in the game's four Trail rating styles with its colours: North American, Alpine, French & Nordic, Japanese; Automatic picks the style of the map's region), **Trails & lifts**
+  (the real ones from OpenStreetMap) and **Trees** (a simplified map of the tree species, following your forest settings and the real tree cover when it is already downloaded; the treeline fade is turquoise behind the species) on top of the Terrain or Topo map, and
+  on top of each other, to understand your mountain before you build it.
+- **Leave out real lifts and trails.** Click a lift or trail on the 2D map to leave it out (it fades to 10%) and click it again to
+  take it back. Left-out ones disappear from the 3D view and from the built map.
+- **Show loads a saved map's settings.** In My Maps, **Show** moves the square to the map and puts back everything it
+  was built with (size, rotation, name, biome, tree settings, height modifier and offset, real trails and lifts, real
+  tree cover). The elevation, the tree cover and the map's own trails and lifts come from the cache, not the internet.
+
+Everything below is added on top of the original 1.8.1:
+
 - **Rotate the area.**
 - **Sharper terrain in many countries.** New maps use the best national elevation survey where there is one,
   stitched across borders, in front of AWS Terrain Tiles. Failed downloads are retried three times, and only the tiles the window needs are fetched.

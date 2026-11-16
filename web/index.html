@@ -68,6 +68,8 @@
             <div class="row-label"><label for="rot">Rotation</label><span class="numval"><input class="num-in" id="rotOut" inputmode="decimal" autocomplete="off" spellcheck="false" aria-label="Rotation in degrees" title="Type a value, then press Enter. Positive turns the square clockwise."><span class="num-unit" id="rotUnit"></span></span></div>
             <input type="range" id="rot" min="0" max="359" step="1" value="0" title="Turn the square about its centre, clockwise. Double-click to set it back to 0.">
             <div class="meta" id="areaMeta"></div>
+            <div class="row-label osm-row" id="lockRow"><label for="areaLock">Lock area</label>
+              <label class="switch" title="After the terrain is loaded: keep the square where it is, so it can't be moved, resized or turned by accident"><input type="checkbox" id="areaLock" disabled><span class="knob"></span></label></div>
             <button class="menu-bar blue" id="loadBtn"><span class="tile"><svg><use href="#i-mountain"/></svg></span><span class="lbl">Load Terrain</span><span class="chev">&rsaquo;</span></button>
           </div>
 

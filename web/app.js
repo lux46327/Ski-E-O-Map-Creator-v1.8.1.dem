@@ -281,7 +281,7 @@ handle.on('drag', () => { if (busy()) return drawSquare(); const ll = handle.get
 handle.on('dragend', () => { if (busy()) return drawSquare(); moveSquare(S.sq.lat, S.sq.lon); });
 let dragFrom = null;
 square.on('mousedown', (e) => {
-  if (busy()) return;
+  if (busy() || areaLocked()) return;
   S.dragging = true;
   dragFrom = { ll: e.latlng, lat: S.sq.lat, lon: S.sq.lon };
   map.dragging.disable();
@@ -306,7 +306,7 @@ function endDrag() {
 map.on('mouseup', endDrag);
 document.addEventListener('mouseup', endDrag);
 map.on('click', (e) => {
-  if (S.justDragged || busy()) return;
+  if (S.justDragged || busy() || areaLocked()) return;
   const p = toWindow(e.latlng.lat, e.latlng.lng), h = S.sq.km * 500;
   if (Math.abs(p.x) <= h && Math.abs(p.y) <= h) return;       // clicks inside the square don't move it
   moveSquare(e.latlng.lat, e.latlng.lng);
@@ -319,6 +319,11 @@ map.on('dragstart', hideHint);                 // user drags only (setView / fit
 
 /* ------------------------------------------------------------ panel state */
 
+/* "Lock area": once the terrain is loaded the square can be pinned, so it can't be moved, resized or turned by accident. It only
+   applies while a terrain is loaded; searching for a place or pressing Show on a saved map unlocks it first. */
+function areaLocked() { return !!S.preview && $('areaLock').checked; }
+function unlockArea() { if ($('areaLock').checked) { $('areaLock').checked = false; updateButtons(); } }
+$('areaLock').onchange = () => { updateButtons(); toast($('areaLock').checked ? 'Area locked: it can not be moved, resized or turned until you unlock it.' : 'Area unlocked.'); };
 function busy() { return !!S.starting || !!(S.job && (S.job.state === 'running' || S.job.state === 'waiting')); }     // (starting: the click is sent, the job not yet)
 function lockTerrain(lock) {
   $('cardTerrain').classList.toggle('locked', lock);
@@ -344,7 +349,12 @@ function updateButtons() {
   document.querySelectorAll('#tab-create input, #tab-create select, #tab-create textarea').forEach((el) => { el.disabled = b; });
   $('qBtn').disabled = b;
   document.querySelectorAll('.mact .link').forEach((l) => { l.disabled = b; });
-  for (const h of [handle, rotHandle]) { if (b) h.dragging.disable(); else h.dragging.enable(); }
+  if (!S.preview) $('areaLock').checked = false;
+  const lk = areaLocked();
+  $('areaLock').disabled = b || !S.preview;
+  for (const id of ['size', 'sizeOut', 'rot', 'rotOut']) if (lk) $(id).disabled = true;
+  for (const h of [handle, rotHandle]) { if (b || lk) h.dragging.disable(); else h.dragging.enable(); }
+  document.body.classList.toggle('area-locked', lk);
   $('tab-create').classList.toggle('working', b);
   document.body.classList.toggle('working', b);          // (the handles on the map are dimmed and ignore the mouse)
 }
@@ -960,6 +970,7 @@ function pickResult(i) {
   S.suggestName = cleanName((x.name || (x.label || '').split(',')[0]).trim()
     .replace(/\s+(ski\s+(resort|area|hill|cent(re|er))|resort|mountain\s+resort)$/i, '')).replace(/\s+/g, ' ').trim().slice(0, 40);
   if (!S.touched.name && S.preview) { $('name').value = S.suggestName; checkName(); }
+  unlockArea();
   if (x.size_km) { S.sq.km = x.size_km; $('size').value = x.size_km; }
   moveSquare(x.lat, x.lon);
   fitSquare();
@@ -1014,6 +1025,7 @@ async function mapAction(slug, a) {
   const m = S.maps.find((x) => x.slug === slug);
   if (!m || busy()) return;
   if (a === 'show') {
+    unlockArea();
     S.sq.km = m.size_km; $('size').value = m.size_km;
     S.sq.rot = normRot(m.rot || 0); $('rot').value = S.sq.rot;
     moveSquare(m.lat, m.lon); fitSquare();
