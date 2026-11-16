@@ -539,7 +539,7 @@ def _borders_file():
 
 def _borders():
     """Country outlines (OpenStreetMap boundaries via geo-maps, simplified by at most 1 m, including territorial
-    waters; built by tools/build_borders.py), loaded once. -> dict, or None if the file is missing (no clipping)"""
+    waters; built by packaging/build_borders.py), loaded once. -> dict, or None if the file is missing (no clipping)"""
     if 'd' not in _BORDERS:
         try:
             with np.load(_borders_file()) as z:
