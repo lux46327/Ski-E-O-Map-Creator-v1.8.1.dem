@@ -497,6 +497,7 @@ function showPreview(p) {
   $('heightMod').value = 1;
   $('heightOff').value = 1;
   _dioramaMod = 1;
+  _dioramaOff = 0;
   renderTerrain();
   if (overlay) map.removeLayer(overlay);
   overlay = new RotatedOverlay(p.shade, squareBounds(p.lat, p.lon, p.size_km, 0), { opacity: 0.55, interactive: false, rot: p.rot || 0 });
@@ -508,8 +509,26 @@ function showPreview(p) {
   checkName();
   updateButtons();
   $('cardTerrain').scrollIntoView({ behavior: 'smooth', block: 'start' });      // down to the terrain card: the whole picture and its numbers
+  const fromMap = !!S.pendingMap;
+  applyPendingMap();
   clearOsm();
   if ($('osm').checked) startOsm();
+  if (fromMap && $('realTrees').checked) startTrees();
+}
+/* Show on a saved map: put the settings it was built with onto the form (after its terrain has loaded) */
+function applyPendingMap() {
+  const s = S.pendingMap;
+  if (!s) return;
+  S.pendingSkip = Array.isArray(s.osm_skip) ? s.osm_skip : null;
+  const set = (id, v) => { if (v != null && isFinite(+v)) $(id).value = clampTo($(id), +v); };
+  if (s.biome && [...$('biome').options].some((o) => o.value === s.biome)) $('biome').value = s.biome;
+  set('treeline', s.treeline); S.touched.treeline = true;
+  set('snow', s.snow); S.touched.snow = true;
+  set('valley', s.valley); set('slope', s.tree_slope); set('fade', s.treeline_fade); set('trees', s.max_trees);
+  set('heightMod', s.height_modifier); set('heightOff', s.height_offset);
+  if (s.name) { $('name').value = s.name; S.touched.name = true; }
+  S.pendingMap = null;
+  renderSettings(); renderTerrain(); checkName();
 }
 
 /* ------------------------------------------------------------ real trails and lifts (OpenStreetMap) */
@@ -517,7 +536,8 @@ function showPreview(p) {
 const DIFF_COLOR = { Beginner: '#2e9e4f', Intermediate: '#2563eb', Expert: '#151515', Pro: '#151515' };
 async function startOsm() {
   clearOsm();
-  const r = await call('osm');
+  const r = await call('osm', S.showSlug || null);
+  S.showSlug = null;
   if (!r.ok) { $('osm').checked = false; return errorBox(r.error); }
   startJob(r);
 }
@@ -535,7 +555,7 @@ function showTrees(r) {
 }
 $('realTrees').onchange = () => { if ($('realTrees').checked) startTrees(); else clearTrees(); };
 function clearOsm() {
-  S.osm = S.osmSkip = null;
+  S.osm = S.osmSkip = S.osmShapes = null;
   if (osmLayer) { map.removeLayer(osmLayer); osmLayer = null; }
   $('osmInfo').classList.add('hidden');
   $('osmInfo').innerHTML = '';
@@ -543,10 +563,18 @@ function clearOsm() {
 function showOsm(r) {
   if (!$('osm').checked || !S.preview) return;           // switched off, or the area changed, while it loaded
   S.osm = r;
+  S.osmShapes = new Map();                                // id -> its line on the map, to dim it when it is left out
+  const own = (x, shape) => {                             // lifts and trails: a click leaves one out or takes it back
+    if (x.id === undefined || x.id === null) return shape;
+    shape._base = { opacity: shape.options.opacity === undefined ? 1 : shape.options.opacity, fill: shape.options.fillOpacity || 0 };
+    S.osmShapes.set(x.id, shape);
+    shape.on('click', (ev) => { L.DomEvent.stopPropagation(ev); toggleOsm(x.id); });
+    return shape;
+  };
   osmLayer = L.layerGroup(r.lines.map((x) => {
     if (x.kind === 'lift') {
-      return L.polyline(x.pts, { color: '#c0392b', weight: 3, dashArray: '7 4' })
-        .bindTooltip(`${esc(x.name)}<br>${esc(x.game)}`, { sticky: true });
+      return own(x, L.polyline(x.pts, { color: '#c0392b', weight: 3, dashArray: '7 4' })
+        .bindTooltip(`${esc(x.name)}<br>${esc(x.game)}`, { sticky: true }));
     }
     if (x.kind === 'glade') {                              // left out: shown so the satellite view can be checked
       const st = { color: '#959ba4', weight: 3, opacity: 0.95, dashArray: '9 6' };
@@ -554,27 +582,59 @@ function showOsm(r) {
         .bindTooltip(`${esc(x.name)}<br>Glade: left out`, { sticky: true });
     }
     const st = { color: DIFF_COLOR[x.difficulty], weight: 2.5, opacity: 0.9, dashArray: x.difficulty === 'Pro' ? '2 5' : null };
-    return (x.kind === 'bowl' ? L.polygon(x.pts, { ...st, fillOpacity: 0.12 }) : L.polyline(x.pts, st))
-      .bindTooltip(esc(x.name), { sticky: true });
+    return own(x, (x.kind === 'bowl' ? L.polygon(x.pts, { ...st, fillOpacity: 0.12 }) : L.polyline(x.pts, st))
+      .bindTooltip(`${esc(x.name)}`, { sticky: true }));
   })).addTo(map);
   const s = r.summary, d = s.difficulties || {};
   const skipped = Object.entries(s.skipped || {});
-  S.osmSkip = new Set();
+  S.osmSkip = new Set(S.pendingSkip || []);
+  S.pendingSkip = null;
+  const row = (l, extra) => `<label><input type="checkbox" data-id="${esc(String(l.id))}"${S.osmSkip.has(l.id) ? '' : ' checked'}><b>${esc(l.name)}</b>${extra}</label>`;
   $('osmInfo').innerHTML = '<div class="stats">' + [['Lifts', s.lifts], ['Trails', s.trails],
     ['Green / blue', `${d.Beginner || 0} / ${d.Intermediate || 0}`], ['Black / 2×', `${d.Expert || 0} / ${d.Pro || 0}`]]
     .map(([k, v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('') + '</div>' +
-    (s.lift_list.length ? '<details><summary>The lifts in the game (untick to leave one out)</summary><div class="osm-list">' +
-      s.lift_list.map((l) => `<label><input type="checkbox" data-id="${l.id}" checked><b>${esc(l.name)}</b>` +
-        `<span>${esc(l.real)} → ${esc(l.game)} · $${l.upkeep.toLocaleString('en-US')}/night</span></label>`).join('') +
+    (s.lift_list.length ? '<details><summary>The lifts in the game (untick to leave one out)</summary><div class="osm-all" data-all="lifts"><button type="button" data-on="1">Tick all</button><button type="button" data-on="0">Untick all</button></div><div class="osm-list">' +
+      s.lift_list.map((l) => row(l, `<span>${esc(l.real)} → ${esc(l.game)} · $${l.upkeep.toLocaleString('en-US')}/night</span>`)).join('') +
       '</div></details><div class="meta" id="osmCost"></div>' : '') +
+    ((s.trail_list || []).length ? '<details><summary>The trails in the game (untick to leave one out)</summary><div class="osm-all" data-all="trails"><button type="button" data-on="1">Tick all</button><button type="button" data-on="0">Untick all</button></div><div class="osm-list">' +
+      s.trail_list.map((t) => row(t, `<span>${esc(t.difficulty)}${t.kind === 'bowl' ? ' · area' : ''}</span>`)).join('') + '</div></details>' : '') +
+    '<div class="meta">Click a lift or trail on the map to leave it out (shown faded) or take it back.</div>' +
     (skipped.length ? `<div class="meta">Left out: ${skipped.map(([k, v]) => `${esc(k)} (${v})`).join(', ')}.</div>` : '') +
     (s.notes || []).map((n) => `<div class="meta">${esc(n)}</div>`).join('');
   $('osmInfo').querySelectorAll('.osm-list input').forEach((c) => {
-    c.onchange = () => { if (c.checked) S.osmSkip.delete(+c.dataset.id); else S.osmSkip.add(+c.dataset.id); osmCost(); };
+    c.onchange = () => setOsm(osmKey(c.dataset.id), c.checked);
   });
+  $('osmInfo').querySelectorAll('.osm-all').forEach((box) => {         // all lifts / all trails at once; kept for the build
+    box.querySelectorAll('button').forEach((b) => {
+      b.onclick = () => {
+        const list = box.dataset.all === 'lifts' ? s.lift_list : s.trail_list, on = b.dataset.on === '1';
+        list.forEach((l) => { if (on) S.osmSkip.delete(l.id); else S.osmSkip.add(l.id); dimOsm(l.id); });
+        box.parentElement.querySelectorAll('.osm-list input').forEach((c) => { c.checked = on; });
+        osmCost();
+      };
+    });
+  });
+  S.osmSkip.forEach((id) => dimOsm(id));
   osmCost();
   $('osmInfo').classList.remove('hidden');
 }
+// lifts have numeric ids, trails text ones ("T0a1b2c3d")
+function osmKey(v) { return /^\d+$/.test(String(v)) ? +v : String(v); }
+function dimOsm(id) {                                      // left out: 10% opacity on the map
+  const sh = S.osmShapes && S.osmShapes.get(id);
+  if (!sh) return;
+  const off = S.osmSkip.has(id);
+  sh.setStyle({ opacity: off ? 0.1 : sh._base.opacity, fillOpacity: off ? sh._base.fill * 0.1 : sh._base.fill });
+}
+function setOsm(id, on) {
+  if (!S.osmSkip) return;
+  if (on) S.osmSkip.delete(id); else S.osmSkip.add(id);
+  dimOsm(id);
+  const box = $('osmInfo').querySelector(`.osm-list input[data-id="${CSS.escape(String(id))}"]`);
+  if (box) box.checked = on;
+  osmCost();
+}
+function toggleOsm(id) { setOsm(id, S.osmSkip.has(id)); }
 // lifts cost upkeep every night, open or not; a real resort's lifts cost far more than a new game earns at first
 function osmCost() {
   const box = $('osmCost'), s = S.osm && S.osm.summary;
@@ -594,7 +654,8 @@ $('photo').onclick = () => {
   if (!S.preview || !window.terrain3d) return;
   window.terrain3d.open({
     token: S.token, tiles: S.tiles, name: $('name').value.trim() || S.suggestName || 'Terrain', units: S.units,
-    treeline: +$('treeline').value, onError: (msg) => errorBox(msg),
+    treeline: +$('treeline').value, biome: $('biome').value, valley: +$('valley').value, treeSlope: +$('slope').value, fade: +$('fade').value, skip: () => (S.osmSkip ? [...S.osmSkip] : []),
+    onError: (msg) => errorBox(msg),
     heightModifier: +$('heightMod').value, heightOffset: +$('heightOff').value,
   });
 };
@@ -630,18 +691,18 @@ function renderSettings() {
   $('tlAuto').classList.toggle('hidden', !S.touched.treeline);
   ['treeline', 'fade', 'snow', 'valley', 'slope', 'trees'].forEach(showNum);
 }
-let _dioramaMod = 1, _dioramaTimer = null, _dioramaBusy = false;
+let _dioramaMod = 1, _dioramaOff = 0, _dioramaTimer = null, _dioramaBusy = false;
 async function runDiorama() {
   if (_dioramaBusy) { _dioramaTimer = setTimeout(runDiorama, 150); return; }       // one at a time; then the latest value
   _dioramaBusy = true;
-  const mod = _dioramaMod;
+  const mod = _dioramaMod, offs = _dioramaOff;
   try {
-    const result = await window.pywebview.api.diorama(mod, 0);
+    const result = await window.pywebview.api.diorama(mod, _dioramaOff);
     const dataUrl = result && result.ok ? (result.value !== undefined ? result.value : result) : null;
-    if (dataUrl && mod === _dioramaMod) $('diorama').src = dataUrl;
+    if (dataUrl && mod === _dioramaMod && offs === _dioramaOff) $('diorama').src = dataUrl;
   } catch (e) { /* silent: preview may not be loaded yet */ }
   _dioramaBusy = false;
-  if (mod !== _dioramaMod) runDiorama();
+  if (mod !== _dioramaMod || offs !== _dioramaOff) runDiorama();
 }
 function renderTerrain() {
   ['heightMod', 'heightOff'].forEach(showNum);
@@ -651,18 +712,20 @@ function renderTerrain() {
   const mod = +$('heightMod').value;
   const off = +$('heightOff').value;
   const mean = p.mean_m;
-  const peak = mean + (p.peak_m - mean) * mod + off;
-  const base = mean + (p.base_m - mean) * mod + off;
+  const peak = Math.max(mean + (p.peak_m - mean) * mod + off, 1);          // land below 0 m is put to 1 m
+  const base = Math.max(mean + (p.base_m - mean) * mod + off, 1);
   const relief = peak - base;
   const slope = p.mean_slope * mod;
   $('stats').innerHTML = [
     ['Peak', fmtElev(peak)], ['Base', fmtElev(base)], ['Vertical', fmtElev(relief)],
     ['Avg slope', Math.round(slope) + '°'],
   ].map(([k, v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
-  // Refresh the diorama picture. The offset does not change its shape, so only a new height modifier re-renders it; the
-  // renders are held back until the slider pauses and one runs at a time, so dragging never queues up work
-  if (mod !== _dioramaMod) {
+  // Refresh the diorama picture. The offset only changes its shape where land would go below 0 m (put to 1 m), so it only
+  // counts then; the renders are held back until the slider pauses and one runs at a time, so dragging never queues up work
+  const offEff = mean + (p.base_m - mean) * mod + off < 0 ? off : 0;
+  if (mod !== _dioramaMod || offEff !== _dioramaOff) {
     _dioramaMod = mod;
+    _dioramaOff = offEff;
     clearTimeout(_dioramaTimer);
     _dioramaTimer = setTimeout(runDiorama, 150);
   }
@@ -954,6 +1017,12 @@ async function mapAction(slug, a) {
     S.sq.km = m.size_km; $('size').value = m.size_km;
     S.sq.rot = normRot(m.rot || 0); $('rot').value = S.sq.rot;
     moveSquare(m.lat, m.lon); fitSquare();
+    // all the settings the map was built with: loaded onto the form once its terrain is there (showPreview)
+    S.pendingMap = { name: m.name, ...(m.settings || {}) };
+    S.showSlug = slug;                                      // its saved trails and lifts are used: no download
+    $('osm').checked = !!S.pendingMap.osm;
+    $('realTrees').checked = !!S.pendingMap.real_trees;
+    $('loadBtn').onclick();
     return;
   }
   if (a === 'delete' && !await confirmBox('Delete ' + m.name + '?',
@@ -972,9 +1041,11 @@ function renderMods(r) {
   if (!r.found) { $('modsList').innerHTML = '<div class="empty">Ski-E-O was not found.</div>'; return; }
   $('modsList').innerHTML = r.mods.map((m) => {
     const note = m.included ? 'Already in your own lift mod'
-      : m.on ? (m.key ? `Installed: press ${esc(m.key)} in game` : 'Installed: in the build menu') : 'Not installed';
+      : m.on ? (m.note ? esc(m.note) : m.key ? `Installed: press ${esc(m.key)} in game` : m.menu ? 'Installed: in the build menu' : 'Installed')
+      : 'Not installed';
     return `<div class="mrow" data-mod="${esc(m.id)}">
       <div class="mi"><h4>${esc(m.name)}</h4>
+        ${m.author ? `<div class="sub by">by ${esc(m.author)}</div>` : ''}
         ${m.about ? `<div class="sub">${esc(m.about)}</div>` : ''}
         <span class="badge${m.on ? '' : ' off'}">${note}</span></div>
       <div class="mbtns">
@@ -1086,8 +1157,8 @@ function showStatsOnly() {
   const mod = +$('heightMod').value;
   const off = +$('heightOff').value;
   const mean = p.mean_m;
-  const peak = mean + (p.peak_m - mean) * mod + off;
-  const base = mean + (p.base_m - mean) * mod + off;
+  const peak = Math.max(mean + (p.peak_m - mean) * mod + off, 1);          // land below 0 m is put to 1 m
+  const base = Math.max(mean + (p.base_m - mean) * mod + off, 1);
   const relief = peak - base;
   const slope = p.mean_slope * mod;
   $('stats').innerHTML = [['Peak', fmtElev(peak)], ['Base', fmtElev(base)], ['Vertical', fmtElev(relief)],

@@ -258,6 +258,7 @@ input[type=range] { width: 100%; accent-color: var(--steel); margin: 6px 0 2px; 
 .mrow .mi { flex: 1; min-width: 0; }
 .mrow h4 { margin: 0; font-size: 16px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mrow .sub { color: var(--row-sub); font-size: 12px; }
+.mrow .sub.by { font-style: italic; margin-top: -2px; }
 .badge { display: inline-block; font-size: 11px; padding: 0 7px; border-radius: 4px; margin: 3px 0 2px; text-transform: uppercase;
   letter-spacing: .5px; background: var(--tag-bg); color: var(--tag-ink); }
 .badge.off { color: #c7cfd5; background: #4b5963; }
@@ -381,3 +382,25 @@ body.working .move-handle, body.working .rot-handle { opacity: .45; pointer-even
 .key-license .link { margin-left: 6px; }
 .key-box .field-err { margin: 4px 0 10px; }
 .key-gap { flex: 1; }
+
+/* 3D view: overlays (slope difficulty, trails and lifts, trees): rating selector and legend */
+.v3d-bar { flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 440px); }
+.hud-select { background: var(--hud); border: 1px solid var(--hud-line); border-radius: 9px; color: #dfe6ec; font-size: 13px; padding: 7px 10px; max-width: 300px; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); }
+.hud-select.hidden { display: none; }
+.v3d-legend { position: absolute; left: 16px; bottom: 56px; z-index: 2; display: flex; flex-direction: column; gap: 10px; padding: 10px 14px; font-size: 13px; color: #dfe6ec; max-height: 60%; overflow: auto; }
+.v3d-legend.hidden { display: none; }
+.v3d-legend .lg { display: flex; flex-direction: column; gap: 5px; }
+.v3d-legend b { font-weight: 600; color: #fff; margin-bottom: 1px; }
+.v3d-legend span { display: flex; align-items: center; gap: 8px; }
+.v3d-legend i { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .35); display: inline-block; flex: none; }
+.v3d-legend i.ln { width: 16px; height: 4px; border-radius: 2px; border: 0; box-shadow: 0 0 0 1px rgba(255, 255, 255, .6); }
+.v3d-legend i.ln.dash { background: repeating-linear-gradient(90deg, #c0392b 0 5px, transparent 5px 8px); }
+.v3d-legend i.ln.dots { background: repeating-linear-gradient(90deg, #151515 0 2px, transparent 2px 5px); }
+.v3d-legend .lg .dim { opacity: .7; font-size: 12px; }
+
+.leaflet-interactive:focus, .leaflet-container path:focus { outline: none; }   /* no box round a clicked lift or trail */
+.v3d-legend svg.mk { flex: none; }
+.osm-all { display: flex; gap: 6px; margin-top: 6px; }
+.osm-all button { font: inherit; font-size: 12px; padding: 3px 9px; border: 1px solid var(--paper-line); border-radius: 6px; background: transparent; color: var(--ink); cursor: pointer; }
+.osm-all button:hover { background: rgba(0, 0, 0, .06); }
+.v3d-legend i.bar { width: 4px; height: 15px; border-radius: 1px; border: 0; box-shadow: 0 0 0 1px rgba(255, 255, 255, .45); }
