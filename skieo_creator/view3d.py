@@ -61,7 +61,6 @@ def build(dem, size_m, treeline_m, height_modifier=1.0, height_offset=0.0):
     if height_modifier != 1.0 or height_offset != 0.0:
         d_mean = d.mean()
         d = d_mean + (d - d_mean) * height_modifier + height_offset
-    d = np.where(d < 0, 1.0, d)                            # nothing below sea level: it is put to 1 m
 
     lo, hi = float(d.min()), float(d.max())
     rng = max(hi - lo, 1.0)

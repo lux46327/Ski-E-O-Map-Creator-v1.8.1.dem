@@ -27,6 +27,7 @@ import math
 import re
 import struct
 import time
+import zlib
 import urllib.parse
 from collections import Counter, defaultdict
 
@@ -123,6 +124,23 @@ GLADE_STEP = 5.0                                # along the line (m)
 GLADE_OFFSETS = np.arange(-15.0, 15.01, 2.5)    # how far beside its OSM line a cleared run is looked for (m)
 GLADE_SHARE = 0.3                               # a run under trees for this share of its best path is a glade
 GLADE_COVER = 0.35                              # a piste area with this share of tree canopy is a glade
+# a run through the forest is as wide as its real corridor: the forest's edges either side are found on the satellite
+# canopy heights across it every CUT_STEP_M, and each of its curves takes CUT_SHARE of the cut there (the trees stand a
+# little back from a run's edge), which the forest then follows; in the open (no forest edge near) and without canopy
+# heights a run keeps its usual width. The game's own runs are 8-150 m wide, one width per curve.
+CUT_STEP_M = 10.0                               # across a run this often
+CUT_REACH_M = 60.0                              # the forest's edge is looked for this far to each side
+CUT_RES_M = 1.5                                 # canopy samples this far apart across
+CUT_TREE_M = 4                                  # canopy this tall is forest
+CUT_WALL_M = 6.0                                # crowns over this much in a row make an edge (lone trees in a run don't)
+CUT_SHIFT_M = 12.0                              # the cut may lie this far beside the OSM line (a run drawn a little off)
+CUT_NEIGHBOUR_M = 8.0                           # another run or a lift this far or more beside a run splits the cut
+CUT_LINK, CUT_LINK_OPEN = 7, 0.75                # ...and is open along the run: this share of points between cuts
+CUT_SHARE = 0.85
+CUT_MAX_M = 90.0
+CUT_SMOOTH = 5                                  # edges smoothed over this many cuts along a run
+CLEAR_MARGIN_M = 3.0                            # the generated forest stays this far off a run's edge
+CUT_CROWN_M = 2.5                               # the satellite sees crowns: trunks stand this far back
 # the forest round the resort follows the real tree cover (satellite canopy heights): open bowls, meadows and old burns
 # stay open and glades keep their own sparse trees, where the generated forest fills everything below the treeline
 # (Vail's back bowls are in OSM as runs only, so they came out as narrow trails through a full forest)
@@ -374,6 +392,7 @@ def plan(osm, terrain, skip=(), canopy=None):
     cm, ready for the save. skip: OSM ids of lifts to leave out (the player's choice). canopy: lat, lon -> tree heights
     (m), to find the glades OSM doesn't mark (canopy.heights); without it (tree_check None) or when it fails
     (tree_check False, with a note) only the marked ones are left out"""
+    skip = set(skip)                                   # lift ids (ints) and trail ids (strings, see trail_id)
     nodes, ways, rels = read(osm)
     europe = -25.0 <= terrain.grid.lon0 <= 45.0 and terrain.grid.lat0 >= 34.0
     skipped = Counter()
@@ -512,6 +531,7 @@ def plan(osm, terrain, skip=(), canopy=None):
             trees = _through_trees(trails, terrain, canopy)
             glades += [dict(name=t['name'], closed=t['shape'] == 'Bowl', P=t['P']) for t, g in zip(trails, trees) if g]
             trails = [t for t, g in zip(trails, trees) if not g]
+            _cuts(trails, lifts, terrain, canopy)              # each run as wide as its real corridor
             tree_check = True
         except (net.NetError, chm.CanopyError, OSError) as ex:
             log.warning('tree check failed: %s', ex)
@@ -525,13 +545,26 @@ def plan(osm, terrain, skip=(), canopy=None):
     trails = [t for t, s in zip(trails, same) if not s]
     if glades:
         skipped[GLADE] = len(gnames) + sum(not g['name'] for g in glades)
+    for tr in trails:
+        tr['id'] = trail_id(tr)
     k = Counter()
     for tr in sorted(trails, key=lambda t: -t['length_cm']):
         if not tr['name']:
             k[tr['difficulty']] += 1
             tr['name'] = '%s %d' % (RUN_NAME[tr['difficulty']], k[tr['difficulty']])
+    left = [t for t in trails if t['id'] in skip]
+    if left:                                           # the player's choice, like the lifts (after the naming: the names stay)
+        skipped['trail left out by you'] = len(left)
+        trails = [t for t in trails if t['id'] not in skip]
     return dict(lifts=lifts, trails=trails, hubs=hubs, skipped=dict(skipped), glades=glades, notes=notes,
                 tree_check=tree_check)
+
+
+def trail_id(t):
+    """a trail's id for leaving it out: its name (as in OSM), kind and where it starts (5 m cells). The same for the map view
+    and the build, whatever else is left out"""
+    P = t['P']
+    return 'T%08x' % (zlib.crc32(('%s|%s|%d|%d' % (t.get('name') or '', t['shape'], round(P[0][0] / 5), round(P[0][1] / 5))).encode()))
 
 
 def _gladed(t):
@@ -588,6 +621,130 @@ def _through_trees(trails, terrain, canopy):
                 cost = c + row
             out.append(bool(cost.min() / len(h) >= GLADE_SHARE))
     return out
+
+
+def _line_index(trails, lifts, cell):
+    """every run's and lift's line on a grid of `cell` m: (sorted cell keys, lowest and highest owner in each cell;
+    owner = the run's index in trails, -1 for a lift)"""
+    pts, own = [], []
+    for i, t in enumerate(trails):
+        if t['shape'] == 'Corridor':
+            Q = _resample(t['P'], cell / 3)
+            pts.append(Q)
+            own.append(np.full(len(Q), i))
+    for l in lifts:
+        Q = _resample(np.array([p[:2] for p in l['wp']], np.float64), cell / 3)
+        pts.append(Q)
+        own.append(np.full(len(Q), -1))
+    P, o = np.vstack(pts), np.concatenate(own)
+    key = np.floor(P[:, 0] / cell).astype(np.int64) * 1000003 + np.floor(P[:, 1] / cell).astype(np.int64)
+    order = np.argsort(key, kind='stable')
+    key, o = key[order], o[order]
+    first = np.concatenate([[True], key[1:] != key[:-1]])
+    at = np.nonzero(first)[0]
+    return key[at], np.minimum.reduceat(o, at), np.maximum.reduceat(o, at)
+
+
+def _run_median(v, k):
+    """running median of v over k values (NaNs left out; NaN where all are)"""
+    h = k // 2
+    w = np.lib.stride_tricks.sliding_window_view(np.pad(v, h, mode='edge'), k)
+    out = np.full(len(v), np.nan)
+    ok = ~np.isnan(w).all(axis=1)
+    out[ok] = np.nanmedian(w[ok], axis=1)
+    return out
+
+
+def _cuts(trails, lifts, terrain, canopy):
+    """each run's corridor through the forest (CUT_*): sets its curves' widths and its cut, the forest's edges either
+    side every CUT_STEP_M ((left, right) points, NaN where it runs under trees) for clear_mask"""
+    runs = [i for i, t in enumerate(trails) if t['shape'] == 'Corridor']
+    if not runs:
+        return
+    offs = np.arange(-CUT_REACH_M, CUT_REACH_M + 1e-6, CUT_RES_M)
+    no = len(offs)
+    Qs, Ns, owner = [], [], []
+    for i in runs:
+        Q = _resample(trails[i]['P'], CUT_STEP_M)
+        d = np.gradient(Q, axis=0)
+        d /= np.maximum(np.hypot(d[:, 0], d[:, 1]), 1e-9)[:, None]
+        Qs.append(Q)
+        Ns.append(np.column_stack([-d[:, 1], d[:, 0]]))
+        owner.append(np.full(len(Q), i))
+    Q, N, owner = np.vstack(Qs), np.vstack(Ns), np.concatenate(owner)
+    n = len(Q)
+    pts = Q[:, None, :] + offs[None, :, None] * N[:, None, :]
+    la, lo = terrain.latlon(pts[..., 0].ravel(), pts[..., 1].ravel())
+    tall = np.asarray(canopy(la, lo)).reshape(n, no) >= CUT_TREE_M
+    flat = np.concatenate([tall, np.zeros((n, 1), bool)], axis=1).ravel()     # crowns in a row CUT_WALL_M wide
+    rid = np.cumsum(flat & ~np.concatenate([[False], flat[:-1]]))
+    wall = (flat & (np.bincount(rid[flat], minlength=rid[-1] + 1)[rid] >= round(CUT_WALL_M / CUT_RES_M)))
+    wall = wall.reshape(n, no + 1)[:, :no]
+    keys, lo_own, hi_own = _line_index(trails, lifts, 3.0)                   # other runs' and lifts' lines
+    key = np.floor(pts[..., 0] / 3.0).astype(np.int64) * 1000003 + np.floor(pts[..., 1] / 3.0).astype(np.int64)
+    k = np.clip(np.searchsorted(keys, key), 0, len(keys) - 1)
+    other = (keys[k] == key) & ((lo_own[k] != owner[:, None]) | (hi_own[k] != owner[:, None]))
+    other &= np.abs(offs)[None, :] >= CUT_NEIGHBOUR_M
+    near = ~wall & (np.abs(offs) <= CUT_SHIFT_M)[None, :]                     # the cut: the open ground nearest the line
+    score = np.where(near, np.abs(offs)[None, :], np.inf)
+    s0 = np.argmin(score, axis=1)
+    found = np.isfinite(score[np.arange(n), s0])
+    idx = np.arange(no)[None, :]
+    lw = np.where(wall & (idx < s0[:, None]), idx, -1).max(axis=1)
+    rw = np.where(wall & (idx > s0[:, None]), idx, no).min(axis=1)
+    lx = np.where(other & (idx < s0[:, None]), idx, -1).max(axis=1)
+    rx = np.where(other & (idx > s0[:, None]), idx, no).min(axis=1)
+    left = np.maximum(np.where(lw >= 0, offs[np.maximum(lw, 0)] + CUT_RES_M / 2, -np.inf),
+                      np.where(lx >= 0, offs[np.maximum(lx, 0)] / 2, -np.inf))
+    right = np.minimum(np.where(rw < no, offs[np.minimum(rw, no - 1)] - CUT_RES_M / 2, np.inf),
+                       np.where(rx < no, offs[np.minimum(rx, no - 1)] / 2, np.inf))
+    # a cut runs along the run: the ground between neighbouring cuts' middles is open (gaps between the crowns of a
+    # forest, or a run drawn off its cut through the trees, are not one)
+    st = offs[s0]
+    mid = (np.maximum(left, st - 15.0) + np.minimum(right, st + 15.0)) / 2
+    M = Q + mid[:, None] * N
+    f = np.linspace(0.0, 1.0, CUT_LINK + 2)[1:-1]
+    seg = M[:-1, None, :] + f[None, :, None] * (M[1:] - M[:-1])[:, None, :]
+    la, lo = terrain.latlon(seg[..., 0].ravel(), seg[..., 1].ravel())
+    link = (np.asarray(canopy(la, lo)).reshape(n - 1, len(f)) < CUT_TREE_M).mean(axis=1) >= CUT_LINK_OPEN
+    link &= owner[1:] == owner[:-1]
+    linked = np.zeros(n, bool)
+    linked[1:] |= link
+    linked[:-1] |= link
+    found &= linked
+    width = np.where(found, right - left, np.nan)                            # inf: open on a side; NaN: under trees
+    r0 = 0
+    for i, Qi in zip(runs, Qs):
+        t, r1 = trails[i], r0 + len(Qi)
+        w, br = width[r0:r1], t['breaks']
+        s = np.linspace(0.0, br[-1], len(w))
+        piece = np.clip(np.searchsorted(br, s, side='right') - 1, 0, len(br) - 2)
+        val = np.full(len(br) - 1, np.nan)                                   # the cut's width per curve, inf: open
+        for j in range(len(br) - 1):
+            wj = w[piece == j]
+            if not len(wj):
+                wj = w[[int(np.argmin(np.abs(s - (br[j] + br[j + 1]) / 2)))]]
+            fin = np.isfinite(wj)
+            if fin.sum() >= max(1.0, 0.4 * len(wj)):
+                val[j] = float(np.median(wj[fin]))
+            elif np.isinf(wj).sum() >= 0.5 * len(wj):
+                val[j] = np.inf
+        known = np.nonzero(~np.isnan(val))[0]
+        if len(known):                                                       # under trees: as the nearest curve
+            val = val[known[np.abs(np.arange(len(val))[:, None] - known[None, :]).argmin(axis=1)]]
+        want = np.where(np.isfinite(val), np.clip(CUT_SHARE * np.nan_to_num(val, posinf=0.0), MIN_WIDTH_M, CUT_MAX_M),
+                        t['width'])
+        _set_widths(t, want.tolist(), terrain)
+        half = np.asarray(t['widths'])[piece] / 2 + CLEAR_MARGIN_M           # an open side: the run's own edge
+        cl = np.where(np.isfinite(left[r0:r1]), left[r0:r1] - CUT_CROWN_M, -half)   # trunks a crown back from the
+        cr = np.where(np.isfinite(right[r0:r1]), right[r0:r1] + CUT_CROWN_M, half)   # gap the satellite sees
+        cl = np.minimum(_run_median(np.where(found[r0:r1], cl, np.nan), CUT_SMOOTH), -half)
+        cr = np.maximum(_run_median(np.where(found[r0:r1], cr, np.nan), CUT_SMOOTH), half)
+        bad = ~found[r0:r1]
+        cl[bad], cr[bad] = np.nan, np.nan
+        t['cut'] = (Qi + cl[:, None] * N[r0:r1], Qi + cr[:, None] * N[r0:r1])
+        t['cut_width'] = w
+        r0 = r1
 
 
 def _trail_name(t):
@@ -808,17 +965,32 @@ def _corridor(name, diff, P, tags, terrain):
     if diff is None:                                   # no grade in OSM: from the incline
         diff = 'Beginner' if max_slope < 15 else 'Intermediate' if max_slope < 24 else 'Expert' if max_slope < 32 else 'Pro'
     width = next((w for w in (_num(t.get('width')) for t in tags) if w and 8 <= w <= 150), None) or WIDTH_M[diff]
+    grooming = {t.get('piste:grooming') for t in tags} - {None}
+    groomed = (diff in ('Beginner', 'Intermediate') or bool(grooming & {'classic', 'yes'})) and \
+        not grooming & {'mogul', 'backcountry', 'no'}
+    night = any(t.get('piste:lit') == 'yes' or t.get('lit') == 'yes' for t in tags)
+    t = dict(name=name, difficulty=diff, shape='Corridor', length_cm=_length(P) * 100.0, max_slope=max_slope,
+             mid=terrain.world(*_at(P, 0.5)), groomed=groomed, night=night, P=P, width=width, breaks=_curve_breaks(P),
+             road=any('highway' in t for t in tags), nogl=any(_gladed(t) is False for t in tags), tags=tags, cut=None)
+    _set_widths(t, [width] * (len(t['breaks']) - 1), terrain)
+    return t
+
+
+def _set_widths(t, want, terrain):
+    """a run's curves (the game's chain of quadratic curves between its breaks) at these widths (m, one per curve),
+    each narrowed to fit a bend tighter than half its width (else the game draws its edges folded) but not below
+    MIN_WIDTH_M, and changing by at most WIDTH_GROW_M from one curve to the next"""
+    P, br = t['P'], t['breaks']
     d = _cum(P)
-    br = _curve_breaks(P)
 
     def at(s):
         return np.array([np.interp(s, d, P[:, 0]), np.interp(s, d, P[:, 1])])
     pieces, widths = [], []
-    for a, b in zip(br[:-1], br[1:]):
+    for a, b, w in zip(br[:-1], br[1:], want):
         p0, p2, m = at(a), at(b), at((a + b) / 2)
         c = 2 * m - (p0 + p2) / 2                      # the curve passes through the piste's own midpoint
         pieces.append((p0, c, p2, m))
-        widths.append(min(width, max(MIN_WIDTH_M, 1.8 * _bend_radius(p0, c, p2))))
+        widths.append(min(max(float(w), MIN_WIDTH_M), max(MIN_WIDTH_M, 1.8 * _bend_radius(p0, c, p2))))
     for i in range(1, len(widths)):                   # widen back gradually after a tight bend
         widths[i] = min(widths[i], widths[i - 1] + WIDTH_GROW_M)
     for i in range(len(widths) - 2, -1, -1):
@@ -828,13 +1000,7 @@ def _corridor(name, diff, P, tags, terrain):
         z0, z2, zm = (float(v) for v in terrain.z(np.array([p0[0], p2[0], m[0]]), np.array([p0[1], p2[1], m[1]])))
         curves.append((terrain.world(*p0, z0), terrain.world(*c, 2 * zm - (z0 + z2) / 2), terrain.world(*p2, z2),
                        w * 100.0))
-    grooming = {t.get('piste:grooming') for t in tags} - {None}
-    groomed = (diff in ('Beginner', 'Intermediate') or bool(grooming & {'classic', 'yes'})) and \
-        not grooming & {'mogul', 'backcountry', 'no'}
-    night = any(t.get('piste:lit') == 'yes' or t.get('lit') == 'yes' for t in tags)
-    return dict(name=name, difficulty=diff, shape='Corridor', curves=curves, length_cm=_length(P) * 100.0,
-                max_slope=max_slope, mid=terrain.world(*_at(P, 0.5)), groomed=groomed, night=night, P=P, width=width,
-                road=any('highway' in t for t in tags), nogl=any(_gladed(t) is False for t in tags), tags=tags)
+    t['curves'], t['widths'] = curves, widths
 
 
 def _bowl(a, poly, terrain):
@@ -868,6 +1034,8 @@ def summary(pl):
                 difficulties=dict(Counter(t['difficulty'] for t in pl['trails'])),
                 lift_list=sorted((dict(id=l['osm'], name=l['name'], real=l['why'], game=LIFTS[l['row']][1], upkeep=upkeep(l))
                                   for l in pl['lifts']), key=lambda r: r['name'].lower()),
+                trail_list=sorted((dict(id=t['id'], name=t['name'], difficulty=t['difficulty'], kind=t['shape'].lower())
+                                   for t in pl['trails']), key=lambda r: r['name'].lower()),
                 skipped=pl['skipped'], notes=pl['notes'])
 
 
@@ -876,9 +1044,9 @@ def overlay(pl, terrain):
     def ll(P):
         la, lo = terrain.latlon(P[:, 0], P[:, 1])
         return [[round(float(a), 6), round(float(b), 6)] for a, b in zip(la, lo)]
-    out = [dict(kind='lift', name=l['name'], game=LIFTS[l['row']][1], pts=ll(np.array([p[:2] for p in l['wp']])))
+    out = [dict(kind='lift', id=l['osm'], name=l['name'], game=LIFTS[l['row']][1], pts=ll(np.array([p[:2] for p in l['wp']])))
            for l in pl['lifts']]
-    out += [dict(kind=t['shape'].lower(), name=t['name'], difficulty=t['difficulty'], pts=ll(_resample(t['P'], 25.0)))
+    out += [dict(kind=t['shape'].lower(), id=t['id'], name=t['name'], difficulty=t['difficulty'], pts=ll(_resample(t['P'], 25.0)))
             for t in pl['trails']]
     out += [dict(kind='glade', name=g['name'] or 'Glade', closed=g['closed'], pts=ll(_resample(g['P'], 25.0)))
             for g in pl['glades'] if g['P'] is not None]
@@ -922,11 +1090,20 @@ def clear_mask(pl, size_m, res_m=4.0):
         if t['shape'] == 'Bowl':
             dr.polygon(px(t['P']), fill=1)
             continue
-        w = (t['width'] + 6.0) / res_m
-        pts = px(_resample(t['P'], 8.0))
-        dr.line(pts, fill=1, width=max(2, int(round(w))))
-        for x, y in pts[::3] + pts[-1:]:
-            disc(x, y, w / 2)
+        d, br = _cum(t['P']), t['breaks']
+        for a, b, w in zip(br[:-1], br[1:], t['widths']):      # each curve at its own width
+            s = np.linspace(a, b, max(2, int(math.ceil((b - a) / 8.0)) + 1))
+            pts = px(np.column_stack([np.interp(s, d, t['P'][:, 0]), np.interp(s, d, t['P'][:, 1])]))
+            r = (w / 2 + CLEAR_MARGIN_M) / res_m
+            dr.line(pts, fill=1, width=max(2, int(round(2 * r))))
+            for x, y in pts:
+                disc(x, y, r)
+        if t.get('cut') is not None:                        # and the real corridor through the forest
+            L, R = t['cut']
+            for i in range(len(L) - 1):
+                q = np.array([L[i], L[i + 1], R[i + 1], R[i]])
+                if not np.isnan(q).any():
+                    dr.polygon(px(q), fill=1)
     for l in pl['lifts']:
         pts = px([p[:2] for p in l['wp']])
         dr.line(pts, fill=1, width=max(2, int(round(2 * LIFTS[l['row']][7] / 100.0 / res_m))))

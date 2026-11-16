@@ -59,7 +59,6 @@ RECIPE_OSM = 12                                   # with the real trails and lif
                                                   # 10 (1.6.2) a run drawn twice in OSM built once, 11 (1.7.2) the
                                                   # forest round the resort follows the real tree cover, 12 (1.7.3)
                                                   # trail curves follow bends (no folded loops)
-HEIGHT_OFFSET_MAX = 2000.0                          # the height offset goes from -2000 m to +2000 m
 BUILD_LOCK = threading.Lock()                     # frame.py holds the map frame globally: one build at a time
 
 
@@ -546,11 +545,10 @@ def _build(spec, dem, game, out_dir, cancel, progress):
     # Apply terrain modification (height modifier and offset)
     dem = np.asarray(dem, np.float64)
     height_modifier = float(spec.get('height_modifier', 1.0))
-    height_offset = float(np.clip(float(spec.get('height_offset', 0)), -HEIGHT_OFFSET_MAX, HEIGHT_OFFSET_MAX))
+    height_offset = float(spec.get('height_offset', 0))
     if height_modifier != 1.0 or height_offset != 0.0:
         dem_mean = dem.mean()
         dem = dem_mean + (dem - dem_mean) * height_modifier + height_offset
-    dem = np.where(dem < 0, 1.0, dem)                      # nothing below sea level: it is put to 1 m
     H, fr = heights(dem, spec['size_m'])
     H = fit_edges(H, mf.wall_stations(gd['umap'], gd['uexp']))
     peak_m, base_m = fr.hmin + 65534 * fr.sc, fr.hmin

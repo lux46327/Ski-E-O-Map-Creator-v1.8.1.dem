@@ -14,6 +14,7 @@ import shutil
 import threading
 import time
 import traceback
+import zlib
 import sys
 import webbrowser
 from pathlib import Path
@@ -21,7 +22,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from . import (APP_NAME, VERSION, biomes, builder, canopy, credentials, dem, gamedata, geo, install, modlib, net, paths, resort,
+from . import (APP_NAME, VERSION, biomes, builder, canopy, credentials, dem, ecology, gamedata, geo, install, modlib, net, paths, resort,
                server, trees, update)
 
 log = logging.getLogger(__name__)
@@ -54,6 +55,32 @@ SETTING_KEYS = ('units', 'layer', 'view')
 # resort names: plain letters / digits / space and a little punctuation (the page turns accents into plain letters)
 NAME_CHARS = re.compile(r"[A-Za-z0-9 '.&()\-]+")
 NAME_RULE = "Names can use letters A-Z, numbers, spaces and - ' . & ( )"
+
+# the trail rating style of a place (the game's "Automatic" setting): Japan, the French and Nordic countries, North America,
+# else the Alpine one. The slope limits are the same in every style; only colours and symbols differ.
+_STYLE_COUNTRIES = (('jp', ('JPN',)), ('fr', ('FRA', 'NOR', 'SWE', 'FIN', 'DNK', 'ISL')), ('na', ('USA', 'CAN')))
+
+
+def rating_region(lat, lon):
+    lat, lon = float(lat), float(lon)
+    have = False
+    for style, codes in _STYLE_COUNTRIES:
+        try:
+            r = dem._in_country(np.array([lon]), np.array([lat]), codes)
+        except Exception:                                   # a missing or broken border file: the boxes below
+            r = None
+        have = have or r is not None
+        if r is not None and bool(np.asarray(r).any()):
+            return style
+    if 122 <= lon <= 146 and 24 <= lat <= 46:              # rough boxes for what the borders did not settle
+        return 'jp'
+    if -170 <= lon <= -50 and 14 <= lat <= 75:
+        return 'na'
+    if (4 <= lon <= 32 and lat >= 55) or (-25 <= lon <= -13 and lat >= 63):
+        return 'fr'
+    if not have and -5 <= lon <= 8.2 and 42 <= lat <= 51.2 and not (5.9 <= lon and lat <= 47.8):
+        return 'fr'                                         # France, without the border file (the Alps' side is left Alpine)
+    return 'alpine' if -12 <= lon <= 45 and 34 <= lat <= 72 else 'na'
 
 
 class UserError(Exception):
@@ -481,11 +508,24 @@ class Api:
                     defaults=biomes.defaults(float(blat), float(blon)))
 
     @_safe
-    def osm(self):
-        """the real resort's trails and lifts (OpenStreetMap) on the loaded terrain: counts, map lines"""
+    def osm(self, slug=None):
+        """the real resort's trails and lifts (OpenStreetMap) on the loaded terrain: counts, map lines.
+        slug: a saved map of this very area: its own copy of the trails and lifts is used (no download)"""
         if not self._preview:
             raise UserError('Load the terrain first.')
-        return self._run('osm', lambda job: self._do_osm(job, self._preview))
+        return self._run('osm', lambda job: self._do_osm(job, self._preview, self._saved_osm(slug, self._preview)))
+
+    def _saved_osm(self, slug, pv):
+        """the trails and lifts a saved map was built with, when it is the loaded area, else None"""
+        try:
+            s = self._record(slug)['spec']
+            raw = (paths.MAPS / slug / 'osm.json').read_text(encoding='utf-8')
+        except (UserError, OSError, ValueError, KeyError, TypeError):
+            return None
+        if not s.get('osm') or abs(s['lat'] - pv['lat']) > 1e-7 or abs(s['lon'] - pv['lon']) > 1e-7 \
+                or abs(s['size_m'] - pv['size_km'] * 1000.0) > 1e-3 or abs(s.get('rot', 0.0) - pv.get('rot', 0.0)) > 0.05:
+            return None
+        return raw
 
     @_safe
     def trees(self):
@@ -511,9 +551,10 @@ class Api:
         H, fr = builder.heights(pv['dem'], size_m)
         return resort.Terrain(H, fr, pv['lat'], pv['lon'], size_m, pv.get('rot', 0.0))
 
-    def _do_osm(self, job, pv):
-        raw = resort.fetch(pv['lat'], pv['lon'], pv['size_km'] * 1000.0, job.cancel, lambda f, t: job.progress(0.7 * f, t),
-                           rot=pv.get('rot', 0.0))
+    def _do_osm(self, job, pv, raw=None):
+        if raw is None:
+            raw = resort.fetch(pv['lat'], pv['lon'], pv['size_km'] * 1000.0, job.cancel, lambda f, t: job.progress(0.7 * f, t),
+                               rot=pv.get('rot', 0.0))
         job.progress(0.75, 'Fitting the trails and lifts to the terrain...')
         terrain = self._osm_terrain(pv)
         pl = resort.plan(json.loads(raw), terrain, canopy=lambda la, lo: canopy.heights(
@@ -584,7 +625,104 @@ class Api:
         return dict(meta, version=ver, base=[bx, by] if bx is not None else None,
                     peak=[float(c * sp - half), float(half - r * sp)],
                     bbox=dict(n=float(cla.max()), s=float(cla.min()), w=float(clo.min()), e=float(clo.max())),
-                    rot=float(rot), center=[float(pv['lat']), float(pv['lon'])])
+                    rot=float(rot), center=[float(pv['lat']), float(pv['lon'])], region=rating_region(pv['lat'], pv['lon']))
+
+    @_safe
+    def overlay_trees(self, biome, treeline_m=0.0, valley_m=0.0, tree_slope=42.0, height_modifier=1.0, height_offset=0.0,
+                      treeline_fade=0.0):
+        """a simplified species map of the forest for the 3D view: one species per cell (20 m), 255 = no trees. The same niche
+        model as the real forest (ecology), averaged over stands, so it shows where each species would mostly grow"""
+        pv = self._preview
+        if not pv:
+            raise UserError('Load the terrain first.')
+        model = ecology.patterns()['biomes'].get(biome)
+        if not model or not model.get('species'):
+            raise UserError('This biome has no tree species to show.')
+        hm = float(np.clip(float(height_modifier), 0.1, 2.0))
+        ho = float(np.clip(float(height_offset), -builder.HEIGHT_OFFSET_MAX, builder.HEIGHT_OFFSET_MAX))
+        d = np.asarray(pv['dem'], np.float64)
+        if hm != 1.0 or ho != 0.0:                           # the same as the 3D terrain itself
+            d = d.mean() + (d - d.mean()) * hm + ho
+        d = np.where(d < 0, 1.0, d)
+        size_m = pv['size_km'] * 1000.0
+        H, fr = builder.heights(d, size_m)
+        E, cell = ecology.grid(H, fr.sp, fr.sc, fr.hmin)
+        nf = E.shape[0]
+        feat = ecology.features(E, cell, pv['lat'])
+        f = max(1, int(round(ecology.CELL_M / fr.sp)))
+        shut = trees.open_ground(H, fr.hmin, fr.sp, fr.sc, float(treeline_m or 0), float(valley_m or 0))[:nf * f:f, :nf * f:f][:nf, :nf]
+        shut = shut | (feat['slope'] > float(tree_slope))
+        dens = np.ones(E.shape, np.float64)                  # 0..1: how much of the forest is kept (the real cover, the treeline fade)
+        fade = np.zeros(E.shape, np.float64)                 # 0..1: how far into the treeline fade a cell is
+        tl, fd = float(treeline_m or 0), float(treeline_fade or 0)
+        if tl > 0 and fd > 0:                                # as the build: the forest thins out over the last `fd` m below the treeline
+            wgt = np.clip((tl - E) / fd, 0.0, 1.0)
+            dens *= wgt
+            fade = np.where(E <= tl, 1.0 - wgt, 0.0)
+        real = False
+        terrain = resort.Terrain(H, fr, pv['lat'], pv['lon'], size_m, pv.get('rot', 0.0))
+        if resort.cover_cached(terrain):                   # the real tree cover, if it is already downloaded (never downloaded here)
+            try:
+                cv = resort.tree_cover_all(terrain, None)
+                cv = np.asarray(Image.fromarray(cv.astype(np.float32)).resize((nf, nf), Image.BILINEAR), np.float64)
+                dens *= np.clip(cv, 0.0, 1.0)              # the real cover itself (0..1), on top of the forest settings
+                real = True
+            except (OSError, ValueError) as ex:
+                log.warning('real tree cover not used for the tree overlay: %s', ex)
+        shut = shut | (dens < 0.04)
+        wood = ~shut
+        if not wood.any():
+            raise UserError('No trees would grow here with these settings%s.' % (' and the real tree cover' if real else ''))
+        lo, hi = np.percentile(E[wood], [1, 99])
+        band = np.clip(((E - lo) / max(float(hi - lo), 1.0) * ecology.BANDS).astype(np.int64), 0, ecology.BANDS - 1)
+        X = ecology.design(band.ravel(), feat['slope'].ravel(), feat['heat'].ravel(), feat['wet'].ravel(), feat['ridge'].ravel())
+        P = ecology.species_probs(model, X).reshape(nf, nf, -1)
+        r = max(1, int(round(40.0 / cell)))                    # the odds of a spot (its slope, sun, wetness), a little smoothed
+        P = np.stack([ecology._box_mean(P[:, :, k], r) for k in range(P.shape[2])], axis=2)
+        # species grow in clumps (the game's maps too): one smooth field, even over 0..1, picks each cell's species by its odds
+        rs = np.random.default_rng(zlib.crc32(('%s|%.5f|%.5f|%.0f' % (biome, pv['lat'], pv['lon'], size_m)).encode()))
+        field = np.zeros((nf, nf))
+        for feature_m, w in ((400.0, 1.0), (120.0, 0.5)):
+            k = max(2, int(nf * cell / feature_m))
+            small = Image.fromarray((rs.random((k + 3, k + 3)) * 65535).astype(np.uint16)).resize((nf, nf), Image.BICUBIC)
+            field += w * np.asarray(small, np.float64)
+        u = (np.argsort(np.argsort(field.ravel())).reshape(nf, nf) + 0.5) / field.size
+        pick = np.minimum((u[:, :, None] > np.cumsum(P, axis=2)).sum(axis=2), P.shape[2] - 1).astype(np.uint8)
+        pick[shut] = 255
+        counts = np.bincount(pick[wood], weights=dens[wood], minlength=P.shape[2]).astype(float)
+        ver = secrets.token_hex(4)
+        d8 = np.where(shut, 0, np.round(dens * 255)).astype(np.uint8)
+        f8 = np.where(fade > 0, np.maximum(np.round(fade * 255), 1), 0).astype(np.uint8)
+        server.BLOBS['trees'] = (pick.tobytes() + d8.tobytes() + f8.tobytes(), 'application/octet-stream')   # three planes
+        return dict(version=ver, n=int(nf), real=real, fade=bool(f8.any()), species=list(model['species']), share=[float(c / counts.sum()) for c in counts])
+
+    @_safe
+    def overlay_trails(self):
+        """the real trails and lifts of the loaded terrain for the 3D view, as lines in the square's own 0..1 coordinates (u east,
+        v from the top edge). The ones already loaded for the build are used, else they are downloaded (cached for days)"""
+        pv = self._preview
+        if not pv:
+            raise UserError('Load the terrain first.')
+        raw = pv.get('osm') or pv.get('osm_view')
+        if not raw:
+            try:
+                raw = resort.fetch(pv['lat'], pv['lon'], pv['size_km'] * 1000.0, rot=pv.get('rot', 0.0))
+            except net.NetError as ex:
+                raise UserError('The trails and lifts could not be downloaded (%s).' % str(ex).split(' Check your')[0].rstrip('.'))
+            pv['osm_view'] = raw                     # (only for this view: the build still asks for "Real trails and lifts")
+        terrain = self._osm_terrain(pv)
+        pl = resort.plan(json.loads(raw), terrain)
+        g = geo.LocalGrid(pv['lat'], pv['lon'], pv.get('rot', 0.0))
+        size = pv['size_km'] * 1000.0
+        out = []
+        for ln in resort.overlay(pl, terrain):
+            ll = np.asarray(ln['pts'], np.float64)
+            if len(ll) < 2:
+                continue
+            x, y = g.to_xy(ll[:, 0], ll[:, 1])
+            out.append(dict(kind=ln['kind'], id=ln.get('id'), name=ln.get('name'), difficulty=ln.get('difficulty'), closed=bool(ln.get('closed')),
+                            pts=[[round(float((a + size / 2) / size), 5), round(float((size / 2 - b) / size), 5)] for a, b in zip(x, y)]))
+        return dict(lines=out)
 
     @staticmethod
     def _shaded_relief(d, fr, n=512):
@@ -644,7 +782,7 @@ class Api:
         osm = pv.get('osm') if params.get('osm') else None
         if params.get('osm') and not osm:
             raise UserError('The real trails and lifts are not loaded yet. Switch the option off and on again.')
-        osm_skip = sorted({int(i) for i in params.get('osm_skip') or ()})       # lifts the player left out
+        osm_skip = sorted({i if isinstance(i, str) else int(i) for i in params.get('osm_skip') or ()}, key=str)   # lifts and trails left out
         size_m = pv['size_km'] * 1000.0
         sp, half = size_m / (builder.G - 1), size_m / 2
         base = params['base']
@@ -775,6 +913,8 @@ class Api:
         return dict(slug=rec['slug'], name=rec['name'], created=rec.get('created'), installed=installed, stale=stale,
                     lat=s['lat'], lon=s['lon'], rot=s.get('rot', 0.0), size_km=s['size_m'] / 1000.0, biome=s['biome'],
                     biome_label=biomes.BIOMES.get(s['biome'], {}).get('label', s['biome']), stats=rec.get('stats', {}),
+                    settings={k: s[k] for k in ('biome', 'treeline', 'valley', 'snow', 'max_trees', 'tree_slope', 'treeline_fade',
+                                                'height_modifier', 'height_offset', 'real_trees', 'osm', 'osm_skip') if k in s},
                     thumb=_data_url(Image.open(thumb), 'JPEG', 80) if thumb.is_file() else None)
 
     def _maps(self):

@@ -539,7 +539,7 @@ def _borders_file():
 
 def _borders():
     """Country outlines (OpenStreetMap boundaries via geo-maps, simplified by at most 1 m, including territorial
-    waters; built by packaging/build_borders.py), loaded once. -> dict, or None if the file is missing (no clipping)"""
+    waters; built by tools/build_borders.py), loaded once. -> dict, or None if the file is missing (no clipping)"""
     if 'd' not in _BORDERS:
         try:
             with np.load(_borders_file()) as z:
@@ -2119,7 +2119,6 @@ def _blend(base, layers, spacing, res=None, base_res=None, holes=None):
         if drop.any():                                      # slivers (and the partly covered cells around them)
             drop = gaussian(drop.astype(np.float64), 1.0) > 0.05
             m = m & ~up_mask(drop)
-            log.debug('blend %s: %.2f %% of the window are slivers, filled from around', name, 100 * drop.mean())
         vc = down(np.where(m, v, np.nan))
         mc = mo & np.isfinite(vc)
         if not mc.any():                                    # nothing but slivers: dropped altogether
@@ -2618,20 +2617,15 @@ def _sources_file(f):
 def load_sources(lat, lon, size_m, cancel=net.NEVER, progress=lambda f, t: None, prefer=None, rot=0.0):
     """-> (dem metres float32 (G, G), source id, names of the datasets used). Cached per window (the names too).
     rot: the area is turned clockwise by this many degrees about its centre (row 0 is its top edge, not north)."""
-    log.debug('load_sources() called: lat=%.5f, lon=%.5f, size_m=%.0f, prefer=%s, rot=%.1f', lat, lon, size_m, prefer, rot)
     rot = norm_rot(rot)
     if prefer:
         order = [prefer]
-        log.debug('Using preferred source: %s', prefer)
     else:
         order = (['national'] if in_national(lat, lon, size_m) else []) + (['3dep2'] if in_us(lat, lon) else []) + ['terrarium']
-        log.debug('Auto-selected source order: %s', order)
     errors = []
     for src in order:
-        log.debug('Trying elevation source: %s', src)
         f = paths.DEMS / ('%s.npy' % cache_key(lat, lon, size_m, src, rot))
         if f.is_file():
-            log.debug('Cache file found: %s', f)
             try:
                 dem = np.load(f)
                 if dem.shape == (G, G):
@@ -2645,17 +2639,13 @@ def load_sources(lat, lon, size_m, cancel=net.NEVER, progress=lambda f, t: None,
                     if not names and src != 'national':
                         names = _default_names(src, size_m / (G - 1))
                     if names:
-                        log.debug('Elevation loaded from cache: shape=%s, sources=%s', dem.shape, names)
                         progress(1.0, 'Elevation loaded from cache')
                         return dem, src, names
-                    log.debug('Cache file has no list of datasets: fetched again')
-            except (OSError, ValueError) as e:
-                log.debug('Failed to load cache file: %s', e)
+            except (OSError, ValueError):
                 pass
         t = time.time()
         _used.names = []
         try:
-            log.debug('Fetching elevation from source: %s', src)
             _WINDOW['spacing'] = size_m / (G - 1)
             dem = FETCH[src](lat, lon, size_m, cancel, progress, rot=rot)
         except (DemError, net.NetError) as e:
@@ -2668,7 +2658,6 @@ def load_sources(lat, lon, size_m, cancel=net.NEVER, progress=lambda f, t: None,
         dem = dem.astype(np.float32)
         buf = io.BytesIO()
         np.save(buf, dem)
-        log.debug('Saving elevation cache: %s (%d bytes)', f, len(buf.getvalue()))
         paths.atomic_write(f, buf.getvalue())
         paths.atomic_write(_sources_file(f), json.dumps(names).encode('utf-8'))
         _trim_cache()
@@ -2682,9 +2671,7 @@ def load_sources(lat, lon, size_m, cancel=net.NEVER, progress=lambda f, t: None,
 
 def load(lat, lon, size_m, cancel=net.NEVER, progress=lambda f, t: None, prefer=None, rot=0.0):
     """-> (dem metres float32 (G, G), source id). Cached per window."""
-    log.debug('load() called: lat=%.5f, lon=%.5f, size_m=%.0f, prefer=%s, rot=%.1f', lat, lon, size_m, prefer, rot)
     dem, src, _ = load_sources(lat, lon, size_m, cancel, progress, prefer, rot)
-    log.debug('load() returned: source=%s, shape=%s, min=%.1f, max=%.1f', src, dem.shape, dem.min(), dem.max())
     return dem, src
 
 

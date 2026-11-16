@@ -185,10 +185,18 @@
       <button class="hud-btn" data-tex="terrain" title="Forest, rock and snow from the elevation">Terrain</button>
       <button class="hud-btn" data-tex="topo" title="Drape the topo map over the terrain">Topo map</button>
     </div>
+    <div class="hud-group" role="group" aria-label="Overlays (any number, on top of each other)">
+      <button class="hud-btn" data-ovl="build" title="The game's Buildability overlay: red where the ground is too steep to build on (over 22°)">Buildability</button>
+      <button class="hud-btn" data-ovl="slope" title="The game's slope difficulty overlay: Beginner, Intermediate, Expert, Extreme">Slope difficulty</button>
+      <button class="hud-btn" data-ovl="trails" title="The real trails and lifts from OpenStreetMap, on top of the terrain">Trails &amp; lifts</button>
+      <button class="hud-btn" data-ovl="trees" title="Where each tree species would mostly grow (simplified)">Trees</button>
+    </div>
+    <select id="v3dRating" class="hud-select hidden" title="Trail rating style (as in the game's Settings > Interface)" aria-label="Trail rating style"></select>
     <button class="hud-btn solo" id="v3dReset">Reset view</button>
     <button class="gbtn crimson" id="v3dClose" title="Close (Esc)">Close</button>
   </div>
   <div class="v3d-compass-wrap" title="North"><div class="v3d-compass" id="v3dCompass"><span>N</span></div></div>
+  <div class="v3d-legend hud-pill hidden" id="v3dLegend" aria-label="Overlay legend"></div>
   <div class="v3d-help hud-pill">Left-drag to rotate &middot; right-drag to move &middot; scroll to zoom &middot; Esc to close</div>
   <div class="v3d-label base hidden" id="v3dBaseLbl">Base area</div>
   <div class="v3d-label hidden" id="v3dPeakLbl"></div>
