@@ -11,6 +11,8 @@ couple of minutes.
 > **Modified version.** This is a modified version of the original Ski-E-O Map Creator 1.8.1 by
 > [oof](https://github.com/oofbyte/Skieo-Map-Creator). Many thanks to oof for creating this tool! Modified by lux.
 
+<div align="left">
+  
 ## What it does
 
 - **Any mountain on Earth.** Search a ski area, mountain or town, drag the square over it (3 to 20 km wide) and load
