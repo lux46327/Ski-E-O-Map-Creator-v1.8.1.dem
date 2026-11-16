@@ -5,28 +5,10 @@ Maps made with an older version show **Rebuild recommended** in My Maps: one cli
 ## v1.8.1.dem
 Based on the original 1.8.1.
 ### Recently changed
-- **Lock area.** After the terrain is loaded, a "Lock area" switch in the area card pins the square: it can no longer be dragged,
-  resized or turned (map, handles, sliders and number boxes) until you unlock it. Searching for a place or pressing Show on a saved map unlocks it to move the square, and it locks again once the terrain of the new spot is loaded.
 - **3D view: overlays.** Four overlays (Buildability, Slope difficulty, Trails & lifts, Trees) can be switched on in any combination, on top of each other and of the Terrain or
   Topo map surface:
-  - **Buildability**, the game's own overlay: red where the ground is steeper than 22° ("Too steep"), buildable ground left
-    unpainted.
-  - **Slope difficulty** in the game's four tiers (Beginner under 16°, Intermediate 16–27°, Expert 27–33°, Extreme over
-    33°), in the game's four Trail rating styles (North American, Alpine, French & Nordic, Japanese) with the game's own colours (double
-    black as white). The
-    default is Automatic, the style of the map's region (Japan, the French and Nordic countries, North America, else Alpine),
-    as in the game. The slope limits are the same in all four styles, as in the game. With a legend.
-  - **Trails & lifts**, the real trails and lifts from OpenStreetMap drawn on the terrain as on the map (difficulty colours,
-    lifts dashed). They use the ones already loaded, else they are downloaded (and cached).
-  - **Trees**, a simplified map of the tree species of the biome (from the same model as the real forest), with the share of
-    each species. It follows the treeline, valley, tree slope, height modifier and offset settings. If the map's real tree cover is
-    already downloaded (the cache), its values set how dense the species are drawn (sparse where there are few real trees,
-    open where there are none). The treeline fade is shown in turquoise behind the species, stronger towards the treeline.
-    Nothing is downloaded for the overlay.
-  They follow the height modifier and offset while the 3D view is open.
 - **Leave out real lifts and trails on the map.** Click a lift or a trail on the 2D map to leave it out of the build (it is
-  shown at 10% opacity) and click again to take it back. The lists under "The lifts in the game" and the new "The trails in
-  the game" follow the clicks, and the other way round. What is left out is removed from the 3D view's Trails & lifts overlay
+  shown at 10% opacity) and click again to take it back. What is left out is removed from the 3D view's Trails & lifts overlay
   and from the map that is built. **Tick all / Untick all** buttons above each list do all lifts or all trails at once. It is saved with the map, so Show restores it.
 - **Show** on a saved map in My Maps loads everything the map was built with: position, size, rotation, name, biome,
   treeline, snow, valley, slope, treeline fade, tree count, height modifier and offset, and real trails and lifts and
@@ -34,14 +16,17 @@ Based on the original 1.8.1.
   with the map, instead of downloading them again.
 
 ### What's new
-- **Rotate the area** with a slider or a turn handle on the map.
-- **Sharper terrain** from national elevation surveys in many countries, stitched across borders, with AWS Terrain Tiles as fill.
-- **Height modifier and height offset** for reshaping the terrain.
-- **Real tree cover** support for terrains without lifts,: trees grow where the satellite data says they do.
-- **Replace Map**: build a map under an existing name to rebuild it with new settings (the name field warns first).
-- **More reliable trails and lifts download** (one request, regional servers first), also for rotated areas.
-- Footer with all elevation sources and licences.
-- No update check in this build.
+- **Rotate the area.**
+- **Sharper terrain in many countries.** New maps use the best national elevation survey where there is one,
+  stitched across borders, in front of AWS Terrain Tiles. Failed downloads are retried three times, and only the tiles the window needs are fetched.
+- **Real tree cover for the whole map for terrains without lifts** (switch under Your resort): trees grow where the satellite tree cover says
+  they do, so meadows, bowls and burns stay open. It is downloaded once and reused for the same area.
+- **Height modifier and height offset** for the terrain, recalculated when you let go of the slider.
+- **More reliable trails and lifts.** One Overpass request for the whole area, a server for your region first, and
+  other servers as backups. Rotated areas work too.
+- **Footer.** Lists the elevation sources; "all sources and licences" opens the full list with each licence
+  (`packaging/THIRD-PARTY.txt` updated).
+- **No update check.** The "Check for updates" button is gone and this build never looks for updates.
 
 ## v1.8.1
 - **Wooded summits, no dead patches.** Dead trees came a whole stand at a time, and near the summits whole stands were
