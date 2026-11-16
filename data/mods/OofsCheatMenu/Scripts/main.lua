@@ -1,7 +1,7 @@
 -- Oof's Simple Cheat Menu for Ski-E-O! Ski Resort Tycoon (UE4SS Lua mod). F6 opens / closes the menu.
 -- Money, time warp, weather and climate, reputation, guests and "god mode" toggles, on the game's own systems
 -- (EconomySubsystem, TimeSubsystem, CalendarSubsystem, WeatherSubsystem, ReputationSubsystem, GuestSimulationSubsystem,
--- EventSubsystem, StaffSettingsDataAsset, the placement validation of the building being placed).
+-- EventSubsystem, StaffSubsystem's settings, the placement validation of the building being placed).
 -- Everything runs on the game thread; the menu is plain UMG built inside the game's CardPlaneWidget and its controls are
 -- polled (UE4SS Lua can't bind UMG delegates). The toggles keep working while the menu is closed.
 local DIR = debug.getinfo(1, "S").source:gsub("^@", ""):gsub("\\", "/"):match("^(.*/)Scripts/[^/]*$")
@@ -215,7 +215,8 @@ end
 local FATIGUE = { "BaseStaminaDecayPerHour", "EventHandlingExtraDecayPerHour", "HurryingExtraDecayPerHour" }
 local staffOrig
 local function staffTick()
-  local st = find("StaffSettingsDataAsset"); if not st then return end
+  local ss = find("StaffSubsystem"); if not ss then return end
+  local st = ss.Settings; if not valid(st) then return end      -- a copy of the data asset after a new game's options
   if not staffOrig then staffOrig = {}; for _, k in ipairs(FATIGUE) do staffOrig[k] = st[k] end end
   for _, k in ipairs(FATIGUE) do
     local want = S.noFatigue and 0 or staffOrig[k]

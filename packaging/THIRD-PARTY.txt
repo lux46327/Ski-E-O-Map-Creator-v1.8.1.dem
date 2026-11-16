@@ -10,7 +10,8 @@ Software
 * three.js r160 with OrbitControls (MIT) -- https://threejs.org -- web/vendor/three/LICENSE
 * retoc (MIT) -- https://github.com/trumank/retoc -- tools/retoc-LICENSE
 * UE4SS v3.0.1 experimental (MIT) -- https://github.com/UE4SS-RE/RE-UE4SS -- data/ue4ss/ue4ss/LICENSE
-  Installed into the game only when a Mod Library mod is switched on and the game has no UE4SS yet.
+  Installed into the game only when a Mod Library mod needs it and the game has no UE4SS yet, with its shared Lua
+  libraries (UEHelpers) and Blueprint mod loader (BPModLoaderMod, BPML_GenericFunctions), from the same project.
   retoc downloads the Oodle compression library on first use.
 * PyInstaller (GPL 2.0 with the bootloader exception: the packaged .exe may be distributed under any license), pywebview (BSD 3-Clause), pythonnet (MIT), NumPy (BSD 3-Clause), Pillow (MIT-CMU), tifffile (BSD 3-Clause), Python (PSF)
 * rasterio (BSD 3-Clause) with GDAL (MIT) and PROJ (MIT), pystac-client and PySTAC (Apache 2.0), requests (Apache 2.0),
@@ -54,7 +55,7 @@ Map and elevation data (downloaded while you use the app)
   - Canada: HRDEM (c) Natural Resources Canada, Open Government Licence - Canada; ArcticDEM (c) Polar Geospatial Center
 * Elevation elsewhere and to fill gaps: Terrain Tiles on AWS Open Data (Mapzen; sources include SRTM, GMTED2010, ETOPO1,
   3DEP and others)
-* Tree canopy heights (to leave out glades): Meta and World Resources Institute (WRI), Global Canopy Height Map v2,
+* Tree canopy heights (to leave out glades and size the runs): Meta and World Resources Institute (WRI), Global Canopy Height Map v2,
   CC BY 4.0, on AWS Open Data -- https://registry.opendata.aws/dataforgood-fb-forests/
 
 Mod Library (data/mods, data/lifts)

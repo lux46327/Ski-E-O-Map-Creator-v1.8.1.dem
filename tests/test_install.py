@@ -2,6 +2,7 @@
 import json
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -33,4 +34,26 @@ with tempfile.TemporaryDirectory() as tmp:
     g.save_state(st)
     assert not g.registry_stale()
     assert json.loads(g.state_file.read_text(encoding='utf-8'))['registry'] == install.REGISTRY_VERSION
+
+# a map package never replaces a file another mod put in ~mods (its own older files and the app's ZZZ_MC_ maps it may)
+real = install.is_valid_game, install.game_running
+install.is_valid_game, install.game_running = (lambda folder: True), (lambda: False)
+try:
+    with tempfile.TemporaryDirectory() as tmp:
+        g = install.Game(tmp)
+        g.mods.mkdir(parents=True)
+        (g.mods / 'ZZZ_Theirs_P.pak').write_bytes(b'theirs')
+        pkg = Path(tmp) / 'x.skimap'
+        with zipfile.ZipFile(pkg, 'w') as z:
+            z.writestr('manifest.json', json.dumps(dict(format=3, id='x', name='X', version=1, order=0, entry={},
+                                                        files=['ZZZ_Theirs_P.pak'], game_build=0)))
+            z.writestr('ZZZ_Theirs_P.pak', b'mine')
+        try:
+            g.install(pkg)
+            raise AssertionError("replaced another mod's file")
+        except install.InstallError as e:
+            assert 'would replace ZZZ_Theirs_P.pak' in str(e), e
+        assert (g.mods / 'ZZZ_Theirs_P.pak').read_bytes() == b'theirs' and not g.installed()
+finally:
+    install.is_valid_game, install.game_running = real
 print('install: all checks passed')

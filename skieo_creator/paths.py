@@ -5,6 +5,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -92,3 +93,34 @@ def atomic_write(path, data):
         except OSError:
             pass
         raise
+
+
+# work folders the app makes inside the game's folder (hard links to its containers need the same drive)
+WORK_PREFIXES = ('.skilift_', '.skipkg_', '.skimap_', '.skieo_creator_')
+
+
+def remove_tree(path, wait=10.0):
+    """remove a work folder, retrying while something (the virus scanner, looking at new hard links) still holds a file
+    in it; True when it is gone (else sweep() removes it on a later start)"""
+    path = Path(path)
+    end = time.monotonic() + wait
+    while True:
+        shutil.rmtree(path, ignore_errors=True)
+        if not path.exists():
+            return True
+        if time.monotonic() > end:
+            logging.getLogger(__name__).warning('could not remove %s yet: it is removed on a later start', path)
+            return False
+        time.sleep(0.25)
+
+
+def sweep(*folders, age=600.0):
+    """remove the work folders earlier runs had to leave in these folders (older than `age` seconds)"""
+    now = time.time()
+    for folder in folders:
+        try:
+            for d in Path(folder).iterdir():
+                if d.is_dir() and d.name.startswith(WORK_PREFIXES) and now - d.stat().st_mtime > age:
+                    remove_tree(d, wait=0)
+        except OSError:
+            pass

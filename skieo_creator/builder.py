@@ -54,11 +54,16 @@ ENTRY_FORMAT = 3
 #   6 (1.1.5): full forest right up to the tree slope (no thinning before it)
 #   7 (1.1.6): the terrain textures' grid scale is the map's own (was the donor's: wrong lighting, lines at tile borders)
 #   8 (1.4.0): for the full game; real size only (no Diorama variant in the map list)
-RECIPE = 8
-RECIPE_OSM = 12                                   # with the real trails and lifts: 9 (1.6.1) without the glades,
+#   9 (1.8.0): forests in stands of the species the game's own maps of the biome have, none broadleaf near the summits
+#  10 (1.8.1): dead trees and living krummholz one by one among healthy ones, no dying (were whole stands: bare tops)
+RECIPE = 10
+RECIPE_OSM = 14                                   # with the real trails and lifts: 9 (1.6.1) without the glades,
                                                   # 10 (1.6.2) a run drawn twice in OSM built once, 11 (1.7.2) the
                                                   # forest round the resort follows the real tree cover, 12 (1.7.3)
-                                                  # trail curves follow bends (no folded loops)
+                                                  # trail curves follow bends (no folded loops), 13 (1.8.0) the new
+                                                  # forests, and each run as wide as its real cut through the forest,
+                                                  # 14 (1.8.1) dead trees and krummholz one by one
+HEIGHT_OFFSET_MAX = 2000.0                          # the height offset goes from -2000 m to +2000 m
 BUILD_LOCK = threading.Lock()                     # frame.py holds the map frame globally: one build at a time
 
 
@@ -545,10 +550,11 @@ def _build(spec, dem, game, out_dir, cancel, progress):
     # Apply terrain modification (height modifier and offset)
     dem = np.asarray(dem, np.float64)
     height_modifier = float(spec.get('height_modifier', 1.0))
-    height_offset = float(spec.get('height_offset', 0))
+    height_offset = float(np.clip(float(spec.get('height_offset', 0)), -HEIGHT_OFFSET_MAX, HEIGHT_OFFSET_MAX))
     if height_modifier != 1.0 or height_offset != 0.0:
         dem_mean = dem.mean()
         dem = dem_mean + (dem - dem_mean) * height_modifier + height_offset
+    dem = np.where(dem < 0, 1.0, dem)                      # nothing below sea level: it is put to 1 m
     H, fr = heights(dem, spec['size_m'])
     H = fit_edges(H, mf.wall_stations(gd['umap'], gd['uexp']))
     peak_m, base_m = fr.hmin + 65534 * fr.sc, fr.hmin
@@ -594,7 +600,7 @@ def _build(spec, dem, game, out_dir, cancel, progress):
         H, fr.hmin, fr.sp, fr.sc, spec['biome'], spec['treeline'], spec['valley'], donors, game.species(),
         game.biome_species(spec['biome']), spec['seed'], max_trees=int(spec.get('max_trees', trees.DEFAULT_TREES)),
         tree_slope=float(spec.get('tree_slope', trees.TREE_SLOPE)), treeline_fade=float(spec.get('treeline_fade', 0.0)),
-        clear=clear, cover=cover)
+        clear=clear, cover=cover, lat=spec['lat'])
     obs_ua, obs_ue = obstacles_assets(gd, recs, table, hdr_tail, fr)
     obs_ua = names.rename(obs_ua, 'obs', '/Game/Generated/DA_BakedObstacles_' + DONOR_MAP, names.p_obs)
     cancel.check()

@@ -172,6 +172,7 @@ TREE_LIMIT = 20000000
 _TREE_CHECK = re.compile(rb'\x81[\xF8-\xFF](....)(?:\x76.|\x0F\x86....)', re.S)
 _LEA_RDX = re.compile(rb'\x48\x8D\x15(....)', re.S)
 _tree_limit_seen = {}
+_tree_check_seen = {}           # per exe version: (offset, limit) found, so a running game's exe is read only once
 
 
 def _tree_check_at(data):
@@ -202,9 +203,11 @@ def raise_tree_limit(folder):
         key = (str(exe), st.st_size, st.st_mtime_ns)
         if key in _tree_limit_seen:
             return _tree_limit_seen[key]
-        data = exe.read_bytes()
-        at = _tree_check_at(data)
-        limit = at and struct.unpack_from('<I', data, at)[0]
+        if key not in _tree_check_seen:
+            data = exe.read_bytes()
+            at = _tree_check_at(data)
+            _tree_check_seen[key] = (at, at and struct.unpack_from('<I', data, at)[0])
+        at, limit = _tree_check_seen[key]
         if not at:
             log.warning('tree limit check not found in %s: maps over 1.5M trees will show none', exe)
         elif limit < TREE_LIMIT:
@@ -260,7 +263,8 @@ class Game:
                 raise InstallError('%s was made for a different installer version (format %s).' % (Path(path).name, m.get('format')))
             names = set(z.namelist())
             for f in m['files']:
-                if f not in names or '/' in f or '\\' in f or not f.startswith('ZZZ_'):
+                if f not in names or '/' in f or '\\' in f or not f.startswith('ZZZ_') \
+                        or Path(f).suffix.lower() not in ('.pak', '.ucas', '.utoc'):
                     raise InstallError('%s is damaged (bad file list).' % Path(path).name)
         return m
 
@@ -281,15 +285,27 @@ class Game:
                                    % (m['name'], other['name'], other['name']))
             if mid != m['id'] and set(other['files']) & set(m['files']):
                 raise InstallError('"%s" has files that belong to "%s".' % (m['name'], other['name']))
+        old = st['maps'].get(m['id'])
+        mine = set(old['files']) if old else set()      # never replace another mod's file (the app's own map paks
+        taken = [f for f in m['files'] if (self.mods / f).exists() and f not in mine and not f.startswith('ZZZ_MC_')]
+        if taken:                                       # are ZZZ_MC_*: a rebuilt map may replace them)
+            raise InstallError('"%s" would replace %s in the game\'s mods folder, which another mod put there.'
+                               % (m['name'], taken[0]))
         self.mods.mkdir(parents=True, exist_ok=True)
         progress('Copying %s...' % m['name'])
-        old = st['maps'].get(m['id'])
-        with zipfile.ZipFile(package) as z:
+        stage = self.mods / '.skimap_incoming'          # checked here before it goes into ~mods
+        paths.remove_tree(stage)
+        stage.mkdir()
+        try:
+            with zipfile.ZipFile(package) as z:
+                for f in m['files']:
+                    with z.open(f) as src, open(stage / f, 'wb') as dst:
+                        shutil.copyfileobj(src, dst, 1 << 20)
+            self.only_a_map(m, stage)
             for f in m['files']:
-                tmp = self.mods / (f + '.part')
-                with z.open(f) as src, open(tmp, 'wb') as dst:
-                    shutil.copyfileobj(src, dst, 1 << 20)
-                os.replace(tmp, self.mods / f)
+                os.replace(stage / f, self.mods / f)
+        finally:
+            paths.remove_tree(stage)
         if old:
             for f in set(old['files']) - set(m['files']):
                 (self.mods / f).unlink(missing_ok=True)
@@ -298,6 +314,21 @@ class Game:
         progress('Updating the map list...')
         self.rebuild_registry(st)
         return m
+
+    def only_a_map(self, m, folder):
+        """a map package holds a map: not the shared assets (build menu, snow caps, map list), nor the game's own
+        outside the map folders, which would make it a way to put mods into the game that aren't in the Mod Library"""
+        from . import modscan                          # (it imports this module)
+        stems = {}
+        for f in m['files']:
+            stems.setdefault(Path(f).stem, set()).add(Path(f).suffix.lower())
+        for stem, have in stems.items():               # IoStore containers only: the .pak beside one holds no files
+            if have != {'.pak', '.ucas', '.utoc'} or modscan.pak_files(Path(folder) / (stem + '.pak')) != 0:
+                raise InstallError('"%s" is not only a map: %s is not a map container. It was not installed.'
+                                   % (m['name'], stem))
+            bad = modscan.not_a_map(modscan.assets(Path(folder) / (stem + '.utoc')), modscan.base_assets(self.paks))
+            if bad:
+                raise InstallError('"%s" is not only a map: it replaces %s. It was not installed.' % (m['name'], bad[0]))
 
     def uninstall(self, map_id, progress=lambda msg: None):
         self.check_ready()
@@ -345,7 +376,7 @@ class Game:
             for f in reg:
                 os.replace(str(f) + '.part', f)
         finally:
-            shutil.rmtree(work, ignore_errors=True)
+            paths.remove_tree(work)
         st['registry'] = REGISTRY_VERSION
         self.save_state(st)
 
@@ -369,8 +400,8 @@ def extract_registry(paks, work):
     return extract_data_asset(paks, work, 'DA_LevelRegistry', 'map list')
 
 
-def extract_data_asset(paks, work, name, what):
-    """(uasset, uexp, script objects) of Content/Data/<name> as the game itself has it (not a mod's copy).
+def extract_data_asset(paks, work, name, what, sub='Data'):
+    """(uasset, uexp, script objects) of Content/<sub>/<name> as the game itself has it (not a mod's copy).
     retoc wants the base container and global.utoc in one folder without ~mods, so hard links are made next to them."""
     src = work / 'in'
     src.mkdir()
@@ -382,7 +413,7 @@ def extract_data_asset(paks, work, name, what):
                 raise InstallError('Could not read the game files (%s).' % e)
     out = work / 'base'
     run_retoc(['to-legacy', '--no-shaders', '--filter', name, str(src), str(out)])
-    d = out / 'SkiResortSimulator' / 'Content' / 'Data'
+    d = out / 'SkiResortSimulator' / 'Content' / sub
     try:
         return ((d / (name + '.uasset')).read_bytes(), (d / (name + '.uexp')).read_bytes(),
                 (out / 'scriptobjects.bin').read_bytes())

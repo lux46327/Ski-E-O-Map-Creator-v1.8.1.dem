@@ -139,7 +139,7 @@ class GameData:
             shutil.rmtree(self.dir, ignore_errors=True)
             os.replace(tmp, self.dir)
         finally:
-            shutil.rmtree(work, ignore_errors=True)
+            paths.remove_tree(work)
         for old in paths.GAMEDATA.iterdir():                 # keep only this game version
             if old.is_dir() and old.name != self.fp:
                 shutil.rmtree(old, ignore_errors=True)

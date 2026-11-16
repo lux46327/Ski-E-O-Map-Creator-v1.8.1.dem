@@ -122,11 +122,18 @@ local function build(pc)
   P.widget, P.shown = w, false
 end
 
--- the game's top bar is on screen: not in menus, loading screens or photo mode
+-- the game's top bar is on screen: not in menus or loading screens, and no game screen over it (the top bar stays
+-- "visible" under the pause menu)
 local ui
+local SCREENS = { "PauseMenuWidget", "MapViewWidget", "SettingsMenuWidget", "SaveLoadMenuWidget", "PhotoModeWidget" }
 local function hudShown()
   local bar = valid(ui) and ui.TopStatusBarWidget or nil
-  return valid(bar) and bar:IsVisible() and (bar:IsInViewport() or valid(bar:GetParent()))
+  if not (valid(bar) and bar:IsVisible() and (bar:IsInViewport() or valid(bar:GetParent()))) then return false end
+  for _, n in ipairs(SCREENS) do
+    local w = ui[n]
+    if valid(w) and w:IsVisible() then return false end
+  end
+  return true
 end
 
 ------------------------------------------------------------------------------------------------------------ loops

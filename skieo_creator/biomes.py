@@ -2,9 +2,9 @@
 
 The automatic biome is the biome of the nearest real resort in the game's own map list (DA_LevelRegistry: every entry
 has a latitude, longitude and biome), so a window in Chile gets the Andes, one in Norway the Scandes, and so on.
-Trees: each planted tree takes its size / health / shape from a stock forest at the same relative elevation (Sugar
-Bowl: aspen, fir, pine, spruce, whitebark pine; Mad River Glen: birch, fir, maple, oak, spruce) and its species is then
-mapped onto the biome's own species list (DA_BiomeSettings_*), with the meshes the game itself uses for that species.
+Trees: the species come from the game's own niche model (ecology.py: the biome's roster and each species' niche, read
+from the game); each tree takes its size / health / shape from a stock forest at the same relative elevation (Sugar
+Bowl for the 'sb' donor, Mad River Glen for 'mrg'), with the meshes the game itself uses for that species.
 """
 from . import geo
 
@@ -34,35 +34,33 @@ STOCK = [
 # donor forest ('sb' Sugar Bowl / 'mrg' Mad River Glen), species map donor -> biome species, default snowfall (median
 # of the biome's own entries), treeline (m) as a + b * (|lat| - lat0), and extra rules
 BIOMES = {
-    'Northeast': dict(label='Northeast (New England / Quebec)', donor='mrg', map={}, snow=1.0,
+    'Northeast': dict(label='Northeast (New England / Quebec)', donor='mrg', snow=1.0,
                       treeline=(1250.0, -45.0, 44.0)),
-    'Rockies': dict(label='Rocky Mountains', donor='sb', map={}, snow=0.96, treeline=(3550.0, -110.0, 39.0)),
-    'CanadianRockies': dict(label='Canadian Rockies', donor='sb', map={}, snow=1.6, treeline=(2250.0, -60.0, 51.0),
-                            larch=0.18),
-    'Tahoe': dict(label='Sierra Nevada / Tahoe', donor='sb', map={}, snow=1.05, treeline=(3000.0, -150.0, 38.5)),
-    'Utah': dict(label='Utah (Wasatch)', donor='sb', map={'Pine': 'Fir', 'WhitebarkPine': 'Spruce'}, snow=1.1,
-                 treeline=(3300.0, -100.0, 40.6), oak=(2450.0, 450.0, 0.55)),
-    'PNW': dict(label='Pacific Northwest (Cascades)', donor='mrg', map={'Oak': 'Hemlock', 'Birch': 'Hemlock'}, snow=1.0,
+    'Rockies': dict(label='Rocky Mountains', donor='sb', snow=0.96, treeline=(3550.0, -110.0, 39.0)),
+    'CanadianRockies': dict(label='Canadian Rockies', donor='sb', snow=1.6, treeline=(2250.0, -60.0, 51.0)),
+    'Tahoe': dict(label='Sierra Nevada / Tahoe', donor='sb', snow=1.05, treeline=(3000.0, -150.0, 38.5)),
+    'Utah': dict(label='Utah (Wasatch)', donor='sb', snow=1.1,
+                 treeline=(3300.0, -100.0, 40.6)),
+    'PNW': dict(label='Pacific Northwest (Cascades)', donor='mrg', snow=1.0,
                 treeline=(2400.0, -170.0, 44.0)),
-    'CoastMountains': dict(label='Coast Mountains (BC)', donor='mrg', map={'Oak': 'Hemlock', 'Birch': 'Hemlock'},
+    'CoastMountains': dict(label='Coast Mountains (BC)', donor='mrg',
                            snow=1.0, treeline=(1900.0, -60.0, 50.0)),
-    'Alps': dict(label='European Alps', donor='sb', map={'Fir': 'Spruce', 'WhitebarkPine': 'Pine', 'Aspen': 'Birch'},
-                 snow=0.95, treeline=(2200.0, -40.0, 46.0), larch=0.2),
-    'Scandes': dict(label='Scandinavia', donor='sb', map={'Fir': 'Spruce', 'WhitebarkPine': 'Pine', 'Aspen': 'MountainBirch'},
+    'Alps': dict(label='European Alps', donor='sb',
+                 snow=0.95, treeline=(2200.0, -40.0, 46.0)),
+    'Scandes': dict(label='Scandinavia', donor='sb',
                     snow=0.75, treeline=(1000.0, -55.0, 61.0)),
-    'Hokkaido': dict(label='Japan (Hokkaido / Honshu)', donor='mrg', map={'Maple': 'MountainBirch'}, snow=0.8,
+    'Hokkaido': dict(label='Japan (Hokkaido / Honshu)', donor='mrg', snow=0.8,
                      treeline=(1100.0, -100.0, 43.0)),
-    'Changbai': dict(label='Northeast China', donor='sb', map={'Fir': 'Larch', 'WhitebarkPine': 'Pine', 'Aspen': 'Birch'},
+    'Changbai': dict(label='Northeast China', donor='sb',
                      snow=0.9, treeline=(2000.0, -60.0, 42.0)),
-    'Taebaek': dict(label='Korea', donor='mrg', map={'Fir': 'Pine', 'Spruce': 'Pine', 'Maple': 'Oak'}, snow=0.9,
+    'Taebaek': dict(label='Korea', donor='mrg', snow=0.9,
                     treeline=(2000.0, 0.0, 37.0)),
     'Andes': dict(label='Andes (Chile / Argentina)', donor='sb',
-                  map={'Aspen': 'Sclerophyll', 'Pine': 'Sclerophyll', 'WhitebarkPine': 'Sclerophyll', 'Spruce': 'Fir'},
                   snow=1.0, treeline=(2400.0, -60.0, 33.0)),
-    'Patagonia': dict(label='Patagonia', donor='mrg', map='SouthernBeech', snow=1.0, treeline=(1650.0, -45.0, 41.0)),
-    'SouthernAlpsNZ': dict(label='New Zealand', donor='mrg', map='SouthernBeech', snow=0.8, treeline=(1300.0, -30.0, 43.0)),
-    'AustralianAlps': dict(label='Australian Alps', donor='sb', map='SnowGum', snow=0.94, treeline=(1850.0, -60.0, 36.5)),
-    'HawaiiAlpine': dict(label='Hawaii (alpine)', donor=None, map={}, snow=1.0, treeline=(0.0, 0.0, 20.0)),
+    'Patagonia': dict(label='Patagonia', donor='mrg', snow=1.0, treeline=(1650.0, -45.0, 41.0)),
+    'SouthernAlpsNZ': dict(label='New Zealand', donor='mrg', snow=0.8, treeline=(1300.0, -30.0, 43.0)),
+    'AustralianAlps': dict(label='Australian Alps', donor='sb', snow=0.94, treeline=(1850.0, -60.0, 36.5)),
+    'HawaiiAlpine': dict(label='Hawaii (alpine)', donor=None, snow=1.0, treeline=(0.0, 0.0, 20.0)),
 }
 
 
