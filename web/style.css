@@ -404,3 +404,8 @@ body.working .move-handle, body.working .rot-handle { opacity: .45; pointer-even
 .osm-all button { font: inherit; font-size: 12px; padding: 3px 9px; border: 1px solid var(--paper-line); border-radius: 6px; background: transparent; color: var(--ink); cursor: pointer; }
 .osm-all button:hover { background: rgba(0, 0, 0, .06); }
 .v3d-legend i.bar { width: 4px; height: 15px; border-radius: 1px; border: 0; box-shadow: 0 0 0 1px rgba(255, 255, 255, .45); }
+
+/* Lock area: the handles can't be grabbed and the square shows it can't be dragged */
+body.area-locked .move-handle, body.area-locked .rot-handle { opacity: .45; pointer-events: none; }
+body.area-locked path.sq { cursor: default; }
+#tab-create input:disabled + .knob { opacity: .55; }

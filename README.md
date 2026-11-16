@@ -6,18 +6,7 @@
 Real terrain, a forest that fits the region, and the ski area's real trails and lifts, built and installed in a
 couple of minutes.
 
-[![Download](https://img.shields.io/github/v/release/oofbyte/Skieo-Map-Creator?label=download&color=2e7d32)](https://github.com/oofbyte/Skieo-Map-Creator/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/oofbyte/Skieo-Map-Creator/total?color=1565c0)](https://github.com/oofbyte/Skieo-Map-Creator/releases)
-[![Windows 10 and 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4)](#download-and-play)
-[![MIT license](https://img.shields.io/github/license/oofbyte/Skieo-Map-Creator?color=555)](LICENSE)
-
-<img src="docs/images/whistler-skimap.jpg" alt="Whistler Blackcomb's real trails and lifts in the game's Ski Map" width="100%">
-
-<sub>Whistler Blackcomb from OpenStreetMap: 518 trails and 31 lifts, in the game's own Ski Map.</sub>
-
-</div>
-
-Fan-made; not affiliated with or endorsed by the developers of Ski-E-O!.
+<img src="docs/images/airolo-ingame.jpg" alt="Airolo, Switzerland, built with the Map Creator and loaded in Ski-E-O!" width="100%">
 
 > **Modified version.** This is a modified version of the original Ski-E-O Map Creator 1.8.1 by
 > [oof](https://github.com/oofbyte/Skieo-Map-Creator). Many thanks to oof for creating this tool! Modified by lux.
@@ -37,67 +26,42 @@ Fan-made; not affiliated with or endorsed by the developers of Ski-E-O!.
   climate. **My Maps** reinstalls, removes or rebuilds your maps with the latest fixes.
 - **Mod Library.** One-click extras for the game, [below](#mod-library).
 
-## Screenshots
+## What is different in this version (1.8.1.dem)
 
-<table>
-<tr>
-<td width="50%"><img src="docs/images/whistler-3d.jpg" alt="Whistler Blackcomb in the game"></td>
-<td width="50%"><img src="docs/images/stratton-3d.jpg" alt="Stratton's trails cut into the forest"></td>
-</tr>
-<tr>
-<td align="center"><sub>Whistler Blackcomb in the game</sub></td>
-<td align="center"><sub>Stratton, Vermont: every run cut into the forest</sub></td>
-</tr>
-<tr>
-<td width="50%"><img src="docs/images/stratton-skimap.jpg" alt="Stratton in the game's Ski Map"></td>
-<td width="50%"><img src="docs/images/vail-skimap.jpg" alt="Vail's front side in the game's Ski Map"></td>
-</tr>
-<tr>
-<td align="center"><sub>Stratton in the Ski Map: 95 trails, 13 lifts</sub></td>
-<td align="center"><sub>Vail in the Ski Map: 215 trails, 30 lifts</sub></td>
-</tr>
-</table>
-
-<table>
-  <tr>
-    <td width="60%"><img src="docs/cortina-real-trees.png" alt="Cortina d'Ampezzo with real world trees, without lifts"></td>
-    <td width="40%"><img src="docs/matterhorn-10km.png" alt="The Matterhorn on a 10 x 10 km terrain"></td>
-  </tr>
-  <tr>
-    <td><em>Cortina d'Ampezzo with real world trees without lifts</em></td>
-    <td><em>The mighty Matterhorn on a 10 x 10 km terrain</em></td>
-  </tr>
-</table>
-
-<img src="docs/images/vail-back-bowls.jpg" alt="Vail's Back Bowls and Blue Sky Basin in the game's Ski Map" width="100%">
-
-<p align="center"><sub>Vail from the west: the Back Bowls and Blue Sky Basin</sub></p>
-
-## v1.8.1.dem
-Based on the original 1.8.1.
 ### Recently changed
-- **3D view: overlays.** Four overlays (Buildability, Slope difficulty, Trails & lifts, Trees) can be switched on in any combination, on top of each other and of the Terrain or
-  Topo map surface:
-- **Leave out real lifts and trails on the map.** Click a lift or a trail on the 2D map to leave it out of the build (it is
-  shown at 10% opacity) and click again to take it back. What is left out is removed from the 3D view's Trails & lifts overlay
-  and from the map that is built. **Tick all / Untick all** buttons above each list do all lifts or all trails at once. It is saved with the map, so Show restores it.
-- **Show** on a saved map in My Maps loads everything the map was built with: position, size, rotation, name, biome,
-  treeline, snow, valley, slope, treeline fade, tree count, height modifier and offset, and real trails and lifts and
-  real tree cover when the map used them. It uses the cached elevation and tree cover, and the trails and lifts saved
-  with the map, instead of downloading them again.
 
-### What's new
+- **Lock area.** Once the terrain is loaded, switch on "Lock area" to pin the square so it can not be moved, resized or turned by accident.
+- **3D view overlays.** switch on **Buildability**, **Slope difficulty**, **Trails & lifts**
+  (the real ones from OpenStreetMap) and **Trees** (game's own placement or real world data)
+- **Leave out real lifts and trails.** Click a lift or trail on the 2D map to remove it
+- **'Show' loads a saved map's settings.** In My Maps, **Show** applies the same settings for everything as previously built.
+
+### Previous additions
+
 - **Rotate the area.**
 - **Sharper terrain in many countries.** New maps use the best national elevation survey where there is one,
-  stitched across borders, in front of AWS Terrain Tiles. Failed downloads are retried three times, and only the tiles the window needs are fetched.
-- **Real tree cover for the whole map for terrains without lifts** (switch under Your resort): trees grow where the satellite tree cover says
-  they do, so meadows, bowls and burns stay open. It is downloaded once and reused for the same area.
-- **Height modifier and height offset** for the terrain, recalculated when you let go of the slider.
-- **More reliable trails and lifts.** One Overpass request for the whole area, a server for your region first, and
-  other servers as backups. Rotated areas work too.
+  stitched across borders. AWS Terrain Tiles acts as a global fallback where there is no national data available.
+- **Real tree cover for the whole map, even without lifts**
+- **Height modifier and height offset** for the terrain
+- **More reliable trails and lifts downloads**
 - **Footer.** Lists the elevation sources; "all sources and licences" opens the full list with each licence
   (`packaging/THIRD-PARTY.txt` updated).
 - **No update check.** The "Check for updates" button is gone and this build never looks for updates.
+
+## Screenshots
+
+The 3D view's overlays (San Bernardino and Airolo, Switzerland):
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/3d-buildability.jpg" alt="Buildability overlay"><br><sub>Buildability: red where the ground is too steep to build on</sub></td>
+<td width="50%"><img src="docs/images/3d-slope-difficulty.jpg" alt="Slope difficulty overlay"><br><sub>Slope difficulty in the game's own rating style</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/images/3d-trails-trees.jpg" alt="Trails, lifts and trees overlay"><br><sub>Trails &amp; lifts with the trees (real tree cover)</sub></td>
+<td width="50%"><img src="docs/images/3d-overlays-combined.jpg" alt="Several overlays together"><br><sub>Overlays stacked: buildability, trails &amp; lifts and trees</sub></td>
+</tr>
+</table>
 
 ## Elevation data by country
 

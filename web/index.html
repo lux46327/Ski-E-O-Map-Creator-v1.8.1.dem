@@ -69,6 +69,8 @@
             <input type="range" id="rot" min="0" max="359" step="1" value="0" title="Turn the square about its centre, clockwise. Double-click to set it back to 0.">
             <div class="meta" id="areaMeta"></div>
             <button class="menu-bar blue" id="loadBtn"><span class="tile"><svg><use href="#i-mountain"/></svg></span><span class="lbl">Load Terrain</span><span class="chev">&rsaquo;</span></button>
+            <div class="row-label osm-row" id="lockRow"><label for="areaLock">Lock area</label>
+              <label class="switch" title="After the terrain is loaded: keep the square where it is, so it can't be moved, resized or turned by accident"><input type="checkbox" id="areaLock" disabled><span class="knob"></span></label></div>
           </div>
 
           <div class="sect locked" id="cardTerrain">
