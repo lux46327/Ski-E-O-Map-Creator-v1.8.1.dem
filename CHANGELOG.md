@@ -6,7 +6,7 @@ Maps made with an older version show **Rebuild recommended** in My Maps: one cli
 Based on the original 1.8.1.
 ### Recently changed
 - **Lock area.** After the terrain is loaded, a "Lock area" switch in the area card pins the square: it can no longer be dragged,
-  resized or turned (map, handles, sliders and number boxes) until you unlock it. Searching for a place or pressing Show on a saved map unlocks it.
+  resized or turned (map, handles, sliders and number boxes) until you unlock it. Searching for a place or pressing Show on a saved map unlocks it to move the square, and it locks again once the terrain of the new spot is loaded.
 - **3D view: overlays.** Four overlays (Buildability, Slope difficulty, Trails & lifts, Trees) can be switched on in any combination, on top of each other and of the Terrain or
   Topo map surface:
   - **Buildability**, the game's own overlay: red where the ground is steeper than 22° ("Too steep"), buildable ground left

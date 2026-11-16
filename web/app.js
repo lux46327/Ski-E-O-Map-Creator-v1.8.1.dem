@@ -322,8 +322,8 @@ map.on('dragstart', hideHint);                 // user drags only (setView / fit
 /* "Lock area": once the terrain is loaded the square can be pinned, so it can't be moved, resized or turned by accident. It only
    applies while a terrain is loaded; searching for a place or pressing Show on a saved map unlocks it first. */
 function areaLocked() { return !!S.preview && $('areaLock').checked; }
-function unlockArea() { if ($('areaLock').checked) { $('areaLock').checked = false; updateButtons(); } }
-$('areaLock').onchange = () => { updateButtons(); toast($('areaLock').checked ? 'Area locked: it can not be moved, resized or turned until you unlock it.' : 'Area unlocked.'); };
+function unlockArea() { if ($('areaLock').checked) { S.relock = true; $('areaLock').checked = false; updateButtons(); } }      // (locked again once the terrain of the new spot is loaded)
+$('areaLock').onchange = () => { S.relock = false; updateButtons(); toast($('areaLock').checked ? 'Area locked: it can not be moved, resized or turned until you unlock it.' : 'Area unlocked.'); };
 function busy() { return !!S.starting || !!(S.job && (S.job.state === 'running' || S.job.state === 'waiting')); }     // (starting: the click is sent, the job not yet)
 function lockTerrain(lock) {
   $('cardTerrain').classList.toggle('locked', lock);
@@ -485,6 +485,7 @@ $('loadBtn').onclick = async () => {
 
 function showPreview(p) {
   S.preview = p;
+  if (S.relock) { S.relock = false; $('areaLock').checked = true; updateButtons(); }
   lockTerrain(false);
   $('diorama').src = p.diorama;
   $('dioEmpty').classList.add('hidden');
